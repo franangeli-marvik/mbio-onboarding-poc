@@ -197,12 +197,9 @@ async def generate_token(request: TokenRequest):
         # Generate JWT
         jwt_token = token.to_jwt()
         
-        # Explicitly dispatch agent to the room
-        # This is needed because LiveKit Cloud auto-dispatch may not be configured
+        # Create room with metadata (agent will auto-dispatch via LiveKit Cloud)
         try:
             lk_api = await get_livekit_api()
-            
-            # Create room first (if it doesn't exist)
             await lk_api.room.create_room(
                 api.CreateRoomRequest(
                     name=request.room_name,
@@ -213,20 +210,9 @@ async def generate_token(request: TokenRequest):
                 )
             )
             print(f"[INFO] Room created: {request.room_name}")
-            
-            # Dispatch agent to the room
-            dispatch_request = api.CreateAgentDispatchRequest(
-                room=request.room_name,
-                metadata=json.dumps({
-                    "participant_name": request.participant_name
-                })
-            )
-            await lk_api.agent_dispatch.create_dispatch(dispatch_request)
-            print(f"[INFO] Agent dispatched to room: {request.room_name}")
-            
-        except Exception as dispatch_error:
-            # Log but don't fail - the user can still join, agent may auto-join later
-            print(f"[WARN] Agent dispatch failed (may be auto-dispatched): {dispatch_error}")
+            # Note: Agent auto-dispatches via LiveKit Cloud - no manual dispatch needed
+        except Exception as room_error:
+            print(f"[WARN] Room creation note: {room_error}")
         
         return TokenResponse(
             token=jwt_token,

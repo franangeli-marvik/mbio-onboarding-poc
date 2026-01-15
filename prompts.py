@@ -33,11 +33,14 @@ and call end_interview() to end the session.
 """
 
 SESSION_INSTRUCTION = """
+IMPORTANT: You MUST speak in English. Do NOT use any other language.
+
 The user has already entered their basic info. Greet them warmly by name and start 
 with the first interview question: ask about their primary career goal or what they're 
 working toward right now.
 
 Keep your greeting brief - just a warm hello and the first question.
+Speak in English only.
 """
 
 # Schema para el extractor post-conversación (NO se envía en streaming)
