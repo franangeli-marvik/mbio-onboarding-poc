@@ -133,10 +133,8 @@ export default function QuestionnairePage() {
     setMode('generating');
 
     try {
-      // Use the backend API for profile generation with transcript
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      
-      const response = await fetch(`${API_URL}/api/generate-profile`, {
+      // Use local proxy to avoid mixed content issues
+      const response = await fetch(`/api/backend/generate-profile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

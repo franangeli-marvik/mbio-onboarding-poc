@@ -4,8 +4,11 @@
 
 import { Room, RoomEvent, ConnectionState, Track, Participant, RemoteTrack, RemoteTrackPublication } from 'livekit-client';
 
-// Backend API URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Use local proxy to avoid mixed content issues (HTTPS -> HTTP)
+// The proxy at /api/backend/* forwards to the actual backend
+const API_BASE_URL = typeof window !== 'undefined' 
+  ? ''  // Client-side: use local API routes
+  : (process.env.BACKEND_API_URL || 'http://localhost:8000');  // Server-side: direct
 
 export interface TokenResponse {
   token: string;
@@ -39,7 +42,7 @@ export interface AllQuestionsResponse {
  * Get a LiveKit access token from the backend
  */
 export async function getToken(roomName: string, participantName: string): Promise<TokenResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/token`, {
+  const response = await fetch(`${API_BASE_URL}/api/backend/token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -66,7 +69,7 @@ export async function getVoiceQuestions(phase: string, lifeStage?: string): Prom
     params.append('life_stage', lifeStage);
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/voice-questions?${params}`);
+  const response = await fetch(`${API_BASE_URL}/api/backend/voice-questions?${params}`);
   
   if (!response.ok) {
     throw new Error(`Failed to get questions: ${response.statusText}`);
@@ -84,7 +87,7 @@ export async function getAllVoiceQuestions(lifeStage?: string): Promise<AllQuest
     params.append('life_stage', lifeStage);
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/voice-questions/all?${params}`);
+  const response = await fetch(`${API_BASE_URL}/api/backend/voice-questions/all?${params}`);
   
   if (!response.ok) {
     throw new Error(`Failed to get questions: ${response.statusText}`);
@@ -97,7 +100,7 @@ export async function getAllVoiceQuestions(lifeStage?: string): Promise<AllQuest
  * Extract profile from transcript
  */
 export async function extractProfile(transcript: Array<{ role: string; text: string }>): Promise<Record<string, unknown>> {
-  const response = await fetch(`${API_BASE_URL}/api/extract-profile`, {
+  const response = await fetch(`${API_BASE_URL}/api/backend/extract-profile`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
