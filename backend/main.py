@@ -17,6 +17,49 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# =============================================================================
+# SECRET MANAGEMENT - Uses Google Secret Manager in production, .env for local
+# =============================================================================
+
+def get_secret(secret_id: str, fallback_env: str = None) -> str:
+    """
+    Get secret from Google Secret Manager, with fallback to environment variable.
+    
+    In production (GCP): reads from Secret Manager
+    In local dev: reads from .env file
+    """
+    # First try environment variable (for local development)
+    env_value = os.getenv(fallback_env or secret_id.upper().replace("-", "_"))
+    if env_value:
+        return env_value
+    
+    # Try Google Secret Manager (for production)
+    try:
+        from google.cloud import secretmanager
+        
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "mbio-profile-creation")
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project_id}/secrets/{secret_id}/versions/latest"
+        
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+    except Exception as e:
+        print(f"[WARN] Could not get secret '{secret_id}' from Secret Manager: {e}")
+        return None
+
+
+# Load configuration from secrets
+LIVEKIT_URL = get_secret("livekit-url", "LIVEKIT_URL")
+LIVEKIT_API_KEY = get_secret("livekit-api-key", "LIVEKIT_API_KEY")
+LIVEKIT_API_SECRET = get_secret("livekit-api-secret", "LIVEKIT_API_SECRET")
+
+if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+    raise ValueError("Missing required secrets: livekit-url, livekit-api-key, livekit-api-secret")
+
+print(f"[INFO] Loaded secrets successfully. LiveKit URL: {LIVEKIT_URL[:30]}...")
+
+# =============================================================================
+
 # Initialize LiveKit API client for agent dispatch
 livekit_api: LiveKitAPI | None = None
 
@@ -45,14 +88,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# LiveKit configuration - NO defaults in production for security
-LIVEKIT_URL = os.getenv("LIVEKIT_URL")
-LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
-LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
-
-if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
-    raise ValueError("Missing required environment variables: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET")
 
 # Voice interview questions organized by phase
 VOICE_QUESTIONS = {
