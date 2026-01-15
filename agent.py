@@ -411,7 +411,6 @@ async def entrypoint(ctx: agents.JobContext):
     
     # If no user yet, wait a bit for them to join
     if user_name == "there":
-        import asyncio
         await asyncio.sleep(2)
         for participant in ctx.room.remote_participants.values():
             if participant.name:
