@@ -390,17 +390,18 @@ async def entrypoint(ctx: agents.JobContext):
     
     print("[INFO] Session started, registering data channel handler...")
     
-    # Register data channel handler AFTER session starts
-    @ctx.room.on("data_received")
-    def on_data_received(data: bytes, participant, kind):
+    # Register data channel handler using rtc.RoomEvent
+    def on_data_received(data_packet: rtc.DataPacket):
         try:
-            message = json.loads(data.decode('utf-8'))
+            message = json.loads(data_packet.data.decode('utf-8'))
             if message.get('type') == 'user_note':
                 note_text = message.get('text', '')
                 print(f"[INFO] Received note from user: {note_text}")
                 asyncio.create_task(process_user_note(note_text))
         except Exception as e:
             print(f"[WARN] Error processing data: {e}")
+    
+    ctx.room.on("data_received", on_data_received)
 
     # Wait for user to connect and get their name
     user_name = "there"  # default

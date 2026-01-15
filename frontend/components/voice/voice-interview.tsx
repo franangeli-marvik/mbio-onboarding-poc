@@ -418,24 +418,7 @@ export default function VoiceInterview({ basicsAnswers, onComplete }: VoiceInter
             </div>
           )}
 
-          {/* Conversation history */}
-          {transcript.length > 0 && (
-            <div className="mb-6 max-h-48 overflow-y-auto">
-              <details className="group">
-                <summary className="text-sm text-gray-500 cursor-pointer hover:text-gray-700 mb-2">
-                  View conversation ({transcript.length} messages)
-                </summary>
-                <div className="space-y-2 pl-2 border-l-2 border-gray-200">
-                  {transcript.slice(-6).map((msg, i) => (
-                    <div key={i} className={`text-sm ${msg.role === 'agent' ? 'text-gray-600' : 'text-msu-green'}`}>
-                      <span className="font-medium">{msg.role === 'agent' ? 'Agent' : 'You'}:</span>{' '}
-                      {msg.text.length > 100 ? msg.text.substring(0, 100) + '...' : msg.text}
-                    </div>
-                  ))}
-                </div>
-              </details>
-            </div>
-          )}
+          {/* Conversation history - hidden, only used for profile generation */}
 
           {/* Notes input (optional) */}
           <div className="mt-8 space-y-3">
