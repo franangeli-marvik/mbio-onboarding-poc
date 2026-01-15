@@ -5,15 +5,31 @@ Provides endpoints for LiveKit token generation and voice interview orchestratio
 
 import os
 import json
+import asyncio
 from datetime import datetime
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from livekit import api
+from livekit.api import LiveKitAPI
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Initialize LiveKit API client for agent dispatch
+livekit_api: LiveKitAPI | None = None
+
+async def get_livekit_api() -> LiveKitAPI:
+    """Get or create LiveKit API client"""
+    global livekit_api
+    if livekit_api is None:
+        livekit_api = LiveKitAPI(
+            url=LIVEKIT_URL.replace("wss://", "https://").replace("ws://", "http://"),
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET,
+        )
+    return livekit_api
 
 app = FastAPI(
     title="MBIO Voice Agent API",
@@ -181,8 +197,36 @@ async def generate_token(request: TokenRequest):
         # Generate JWT
         jwt_token = token.to_jwt()
         
-        # Note: Agent auto-dispatch is configured in LiveKit Cloud
-        # No need to manually dispatch - it happens automatically when participant joins
+        # Explicitly dispatch agent to the room
+        # This is needed because LiveKit Cloud auto-dispatch may not be configured
+        try:
+            lk_api = await get_livekit_api()
+            
+            # Create room first (if it doesn't exist)
+            await lk_api.room.create_room(
+                api.CreateRoomRequest(
+                    name=request.room_name,
+                    metadata=json.dumps({
+                        "participant_name": request.participant_name,
+                        "created_at": datetime.now().isoformat()
+                    })
+                )
+            )
+            print(f"[INFO] Room created: {request.room_name}")
+            
+            # Dispatch agent to the room
+            dispatch_request = api.CreateAgentDispatchRequest(
+                room=request.room_name,
+                metadata=json.dumps({
+                    "participant_name": request.participant_name
+                })
+            )
+            await lk_api.agent_dispatch.create_dispatch(dispatch_request)
+            print(f"[INFO] Agent dispatched to room: {request.room_name}")
+            
+        except Exception as dispatch_error:
+            # Log but don't fail - the user can still join, agent may auto-join later
+            print(f"[WARN] Agent dispatch failed (may be auto-dispatched): {dispatch_error}")
         
         return TokenResponse(
             token=jwt_token,
