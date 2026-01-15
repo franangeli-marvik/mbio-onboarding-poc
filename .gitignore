@@ -1,0 +1,48 @@
+# Environment variables and secrets
+.env
+.env.*
+*.json
+!package.json
+!tsconfig.json
+!components.json
+!fields.csv
+
+# Google Cloud credentials
+*-d9f7344dbcb6.json
+mbio-profile-creation-*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+.vercel/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Output files
+output/*.ogg
+output/*.json
+console-recordings/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lock files (optional - uncomment if you want to include them)
+# package-lock.json
+# bun.lock
+# pnpm-lock.yaml

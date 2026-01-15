@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # MBIO Voice Agent Backend
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app
+      - ./output:/app/output
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LiveKit Server for local development
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --dev --bind 0.0.0.0
+    ports:
+      - "7880:7880"   # HTTP/WebSocket
+      - "7881:7881"   # RTC/UDP
+      - "7882:7882"   # TURN/UDP
+    environment:
+      - LIVEKIT_KEYS=devkey: secret
+    restart: unless-stopped
+
+  # LiveKit Agent Worker (runs the voice agent)
+  agent:
+    build: ./backend
+    command: python -m livekit.agents.cli dev --url ws://livekit:7880
+    env_file:
+      - .env
+    environment:
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=secret
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app
+      - ./output:/app/output
+      - ./prompts.py:/app/prompts.py
+      - ./agent.py:/app/agent.py
+    depends_on:
+      - livekit
+    restart: unless-stopped
+
+# Note: Frontend runs separately with `npm run dev` in the frontend/ directory
+# This allows for hot reloading during development

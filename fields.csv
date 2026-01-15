@@ -1,0 +1,60 @@
+Field,Experience,Education,Bar Admission,Professional Association,"Licenses
+&
+Certifications",Publication,Published Book,Course,Project,Honors & Awards,Clubs & Organizations,Volunteering,Music & Art,Sports,Sports Accomplishment,Recommendation,Video Cover Letter,Post
+"Link
+* Optional for all",,,,,,,,,,,,,,,,,,
+"Level of Education
+* Only shown for Education",,"Dropdown
+Tenant.LookupEducationLevels",,,,,,,,,,,,,,,,
+"Type of Experience
+* Only shown for Experience","Dropdown
+Tenant.LookupWorkExperienceTypes",,,,,,,,,,,,,,,,,
+"Title
+* Required for All types",Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required
+"Organization
+* Name (required)
+* Logo (optional)
+* Website (optional)
+* Number of empoyees (optional)
+* Industry (optional)",Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Required,Optional,Optional,Required,Optional,Optional,Optional
+"Location - optional for All 
+* City
+* State
+* Country",,,,,,,,,,,,,,,,,,
+"Start Date
+* Month and Year",Required,Required,Required,Required,"Required
+Label: “Issue Date”","Required
+
+Label: Publish Date","Required
+
+Label: Publish Date",Required,Required,"Required
+Label: “Issue Date”",Required,Required,Required,Required,"Required
+Label is “Accomplishment Date”",Hidden,Hidden,Hidden
+"End Date
+Optional unless specified otherwise",,,,,"Optional, Label is “Expiration Date”",Hidden,Hidden,,,Hidden,,,,,Hidden,Hidden,Hidden,Hidden
+"Media: Photos and Videos
+Optional for all
+
+Free account
+* 1 photo only
+
+Paid accounts
+* 10 photos and videos
+* Photos up to 5MB each
+* Videos up to 100MB
+* Ability to record a video",,,,,,,,,,,,,,,,,,
+"Attachments: PDFs
+
+Free account
+not available
+
+Paid accounts
+10 PDFs up to 10MB each",,,,,,,,,,,,,,,,,,
+"Links
+Optional for all
+
+Ability to attach and order multiple links",,,,,,,,,,,,,,,,,,
+"WYSIWYG
+Optional",,,,,,,,,,,,,,,,,,
+"Embed (YouTube, IG, X)
+Optional",,,,,,,,,,,,,,,,,,
