@@ -18,5 +18,8 @@ livekit-plugins-silero>=0.6.0
 # OpenAI for profile extraction
 openai>=1.0.0
 
+# Google GenAI for resume parsing
+google-genai>=1.0.0
+
 # WebSocket support
 websockets>=12.0

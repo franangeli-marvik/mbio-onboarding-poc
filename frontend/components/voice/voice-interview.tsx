@@ -9,6 +9,7 @@ import { getToken } from '@/lib/livekit';
 
 interface VoiceInterviewProps {
   basicsAnswers: Record<string, string>;
+  resumeContext?: Record<string, unknown> | null;
   onComplete: (voiceAnswers: Record<string, string>, transcript: Array<{ role: string; text: string }>) => void;
 }
 
@@ -18,7 +19,7 @@ const PHASE_LABELS = ['SCHOOL', 'LIFE', 'SKILLS', 'IMPACT'];
 
 type VoiceState = 'connecting' | 'listening' | 'thinking' | 'speaking' | 'idle' | 'error';
 
-export default function VoiceInterview({ basicsAnswers, onComplete }: VoiceInterviewProps) {
+export default function VoiceInterview({ basicsAnswers, resumeContext, onComplete }: VoiceInterviewProps) {
   const router = useRouter();
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [isConnected, setIsConnected] = useState(false);

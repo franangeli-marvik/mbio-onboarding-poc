@@ -8,7 +8,7 @@ import json
 import asyncio
 from datetime import datetime
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from livekit import api
@@ -449,6 +449,82 @@ async def get_session_audio(session_id: str):
         media_type="audio/ogg",
         filename=f"{session_id}.ogg"
     )
+
+
+@app.post("/api/process-resume")
+async def process_resume(
+    file: UploadFile = File(...),
+    linkedin_url: Optional[str] = Form(None)
+):
+    """
+    Process a resume file (PDF or DOCX) and extract structured data using Gemini 3 Flash.
+    
+    Returns extracted profile data with gaps_to_explore for the voice interview.
+    """
+    from resume_parser import parse_resume, get_mime_type
+    
+    # Validate file type
+    allowed_types = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/msword'
+    ]
+    
+    # Get MIME type from content_type or filename
+    mime_type = file.content_type
+    if mime_type not in allowed_types:
+        try:
+            mime_type = get_mime_type(file.filename)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    # Read file bytes
+    file_bytes = await file.read()
+    
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+    
+    if len(file_bytes) > 50 * 1024 * 1024:  # 50MB limit
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 50MB")
+    
+    try:
+        # Parse resume with Gemini
+        extracted_data = await parse_resume(
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+            filename=file.filename
+        )
+        
+        # Add LinkedIn URL if provided
+        if linkedin_url and linkedin_url.strip():
+            if "basics" not in extracted_data:
+                extracted_data["basics"] = {}
+            if "profiles" not in extracted_data["basics"]:
+                extracted_data["basics"]["profiles"] = []
+            
+            # Check if LinkedIn already exists
+            linkedin_exists = any(
+                p.get("network", "").lower() == "linkedin" 
+                for p in extracted_data["basics"]["profiles"]
+            )
+            
+            if not linkedin_exists:
+                extracted_data["basics"]["profiles"].append({
+                    "network": "LinkedIn",
+                    "url": linkedin_url.strip()
+                })
+        
+        return {
+            "success": True,
+            "data": extracted_data,
+            "gaps_to_explore": extracted_data.get("_mbio", {}).get("gaps_to_explore", [])
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"[ERROR] Resume processing failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process resume: {str(e)}")
 
 
 if __name__ == "__main__":

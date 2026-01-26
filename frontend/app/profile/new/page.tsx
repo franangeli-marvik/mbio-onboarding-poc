@@ -51,6 +51,9 @@ export default function QuestionnairePage() {
   const [mode, setMode] = useState<InterviewMode>('basics');
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [linkedinUrl, setLinkedinUrl] = useState('');
+  const [resumeContext, setResumeContext] = useState<Record<string, unknown> | null>(null);
+  const [isProcessingResume, setIsProcessingResume] = useState(false);
+  const [processingError, setProcessingError] = useState<string | null>(null);
 
   // Fetch questions from API on mount
   useEffect(() => {
@@ -193,9 +196,50 @@ export default function QuestionnairePage() {
       }
     };
 
-    const handleContinue = () => {
+    const handleContinue = async () => {
+      // Process resume if uploaded
+      if (resumeFile || linkedinUrl.trim()) {
+        setIsProcessingResume(true);
+        setProcessingError(null);
+        
+        try {
+          const formData = new FormData();
+          if (resumeFile) {
+            formData.append('file', resumeFile);
+          }
+          if (linkedinUrl.trim()) {
+            formData.append('linkedin_url', linkedinUrl.trim());
+          }
+          
+          const response = await fetch('/api/backend/process-resume', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          const data = await response.json();
+          
+          if (data.success && data.data) {
+            // Store the extracted resume context
+            setResumeContext(data.data);
+            sessionStorage.setItem('resumeContext', JSON.stringify(data.data));
+            console.log('Resume processed successfully:', data.data);
+          } else {
+            console.error('Resume processing failed:', data.error);
+            setProcessingError(data.error || 'Failed to process resume');
+            setIsProcessingResume(false);
+            return; // Don't proceed if processing failed
+          }
+        } catch (error) {
+          console.error('Error processing resume:', error);
+          setProcessingError('Failed to connect to server. Please try again.');
+          setIsProcessingResume(false);
+          return;
+        }
+        
+        setIsProcessingResume(false);
+      }
+      
       // Continue to voice interview
-      // Resume/LinkedIn will be processed later
       setMode('voice');
     };
 
@@ -289,18 +333,36 @@ export default function QuestionnairePage() {
               </div>
             </div>
 
+            {/* Error message */}
+            {processingError && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+                {processingError}
+              </div>
+            )}
+
             {/* Action buttons */}
             <div className="flex flex-col items-center gap-4 pt-4">
               <button
                 onClick={handleContinue}
-                disabled={!resumeFile && !linkedinUrl.trim()}
-                className="w-full max-w-sm px-8 py-4 bg-msu-green text-white rounded-full text-lg font-medium hover:bg-msu-green-light transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
+                disabled={(!resumeFile && !linkedinUrl.trim()) || isProcessingResume}
+                className="w-full max-w-sm px-8 py-4 bg-msu-green text-white rounded-full text-lg font-medium hover:bg-msu-green-light transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg flex items-center justify-center gap-2"
               >
-                Continue
+                {isProcessingResume ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Processing resume...
+                  </>
+                ) : (
+                  'Continue'
+                )}
               </button>
               <button
                 onClick={handleSkip}
-                className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                disabled={isProcessingResume}
+                className="text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
               >
                 Skip for now
               </button>
@@ -309,7 +371,8 @@ export default function QuestionnairePage() {
                   setMode('basics');
                   setCurrentIndex(visibleBasicsQuestions.length - 1);
                 }}
-                className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+                disabled={isProcessingResume}
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
               >
                 ← Back
               </button>
@@ -335,6 +398,7 @@ export default function QuestionnairePage() {
       >
         <VoiceInterview
           basicsAnswers={answers}
+          resumeContext={resumeContext}
           onComplete={handleVoiceComplete}
         />
       </Suspense>
