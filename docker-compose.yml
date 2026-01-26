@@ -10,6 +10,9 @@ services:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
+      - GOOGLE_CLOUD_PROJECT=mbio-profile-creation
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
     volumes:
       - ./backend:/app
       - ./output:/app/output
@@ -43,6 +46,9 @@ services:
       - LIVEKIT_API_KEY=devkey
       - LIVEKIT_API_SECRET=secret
       - PYTHONUNBUFFERED=1
+      - GOOGLE_CLOUD_PROJECT=mbio-profile-creation
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
     volumes:
       - ./backend:/app
       - ./output:/app/output
