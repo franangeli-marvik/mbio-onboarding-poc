@@ -100,17 +100,9 @@ export default function QuestionnairePage() {
 
     // Check if this is the last BASICS question
     if (currentIndex === visibleBasicsQuestions.length - 1) {
-      // Check life stage to determine next mode
-      const lifeStage = updatedAnswers.lifeStage;
-      
+      // All users go to resume upload step (optional)
       setTimeout(() => {
-        if (lifeStage === 'professional') {
-          // Professional flow: go to resume upload
-          setMode('resume-upload');
-        } else {
-          // Student flow: go to voice interview
-          setMode('voice');
-        }
+        setMode('resume-upload');
         setIsAnimating(false);
       }, 400);
       return;
@@ -192,7 +184,7 @@ export default function QuestionnairePage() {
     );
   }
 
-  // Resume upload mode (for professionals)
+  // Resume upload mode (optional for all users)
   if (mode === 'resume-upload') {
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -202,17 +194,16 @@ export default function QuestionnairePage() {
     };
 
     const handleContinue = () => {
-      // For now, just proceed to generating mode
-      // In the future, this will process the resume/LinkedIn
-      if (resumeFile || linkedinUrl.trim()) {
-        setMode('generating');
-        // TODO: Process resume/LinkedIn and generate profile
-        // For now, just show a message
-        setTimeout(() => {
-          alert('Resume/LinkedIn processing coming soon! For now, please use the Student flow.');
-          setMode('resume-upload');
-        }, 2000);
-      }
+      // Continue to voice interview
+      // Resume/LinkedIn will be processed later
+      setMode('voice');
+    };
+
+    const handleSkip = () => {
+      // Skip resume upload, go directly to voice interview
+      setResumeFile(null);
+      setLinkedinUrl('');
+      setMode('voice');
     };
 
     return (
@@ -232,10 +223,10 @@ export default function QuestionnairePage() {
             {/* Title */}
             <div className="text-center space-y-3">
               <h1 className="text-4xl font-serif font-semibold text-gray-800">
-                Upload your resume or input your LinkedIn profile
+                Before we progress, would you like to upload your resume and LinkedIn profile URL?
               </h1>
               <p className="text-lg text-gray-600">
-                We'll use this to create your profile automatically.
+                This helps us make your profile even better.
               </p>
             </div>
 
@@ -283,13 +274,6 @@ export default function QuestionnairePage() {
                 </div>
               </div>
 
-              {/* Divider */}
-              <div className="flex items-center gap-4">
-                <div className="flex-1 h-px bg-gray-200"></div>
-                <span className="text-sm text-gray-400">or</span>
-                <div className="flex-1 h-px bg-gray-200"></div>
-              </div>
-
               {/* LinkedIn input */}
               <div className="space-y-3">
                 <label className="block text-sm font-medium text-gray-700">
@@ -305,21 +289,27 @@ export default function QuestionnairePage() {
               </div>
             </div>
 
-            {/* Continue button */}
+            {/* Action buttons */}
             <div className="flex flex-col items-center gap-4 pt-4">
               <button
                 onClick={handleContinue}
                 disabled={!resumeFile && !linkedinUrl.trim()}
-                className="px-8 py-4 bg-msu-green text-white rounded-full text-lg font-medium hover:bg-msu-green-light transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
+                className="w-full max-w-sm px-8 py-4 bg-msu-green text-white rounded-full text-lg font-medium hover:bg-msu-green-light transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
               >
                 Continue
+              </button>
+              <button
+                onClick={handleSkip}
+                className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                Skip for now
               </button>
               <button
                 onClick={() => {
                   setMode('basics');
                   setCurrentIndex(visibleBasicsQuestions.length - 1);
                 }}
-                className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
               >
                 ← Back
               </button>
