@@ -81,9 +81,10 @@ export default function QuestionnairePage() {
     }
   }, [currentIndex, currentQuestion, answers]);
 
-  const handleNext = async (selectedValue?: string) => {
+  const handleNext = async (selectedValue?: string | unknown) => {
     // Use selectedValue if provided (from MultipleChoice), otherwise use currentAnswer
-    const answerValue = selectedValue ?? currentAnswer;
+    // Check if selectedValue is actually a string (not an event object)
+    const answerValue = (typeof selectedValue === 'string') ? selectedValue : currentAnswer;
     
     if (!answerValue.trim() && currentQuestion.type !== 'select') return;
 
