@@ -403,20 +403,7 @@ export default function VoiceInterview({ basicsAnswers, onComplete }: VoiceInter
             </div>
           </div>
 
-          {/* Agent transcript (what the agent is saying) */}
-          {agentText && (
-            <div className="mb-6 p-4 bg-white/60 backdrop-blur-sm rounded-2xl border border-gray-200 transition-all">
-              <p className="text-gray-700 text-lg leading-relaxed">{agentText}</p>
-            </div>
-          )}
-
-          {/* User transcript (what user is saying) */}
-          {userText && (
-            <div className="mb-6 p-4 bg-msu-green/10 backdrop-blur-sm rounded-2xl border border-msu-green/20 transition-all">
-              <p className="text-sm text-msu-green-light mb-1">You:</p>
-              <p className="text-gray-800">{userText}</p>
-            </div>
-          )}
+          {/* Transcript hidden - only used for profile generation */}
 
           {/* Conversation history - hidden, only used for profile generation */}
 
