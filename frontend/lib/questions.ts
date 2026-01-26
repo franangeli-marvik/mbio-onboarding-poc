@@ -44,9 +44,7 @@ export const questions: Question[] = [
     type: "select",
     options: [
       { value: "student", label: "Student" },
-      { value: "recent_grad", label: "Recent Grad (0-5 years exp)" },
-      { value: "professional", label: "Experienced Professional" },
-      { value: "creator", label: "Creator / Freelancer / Artist" },
+      { value: "professional", label: "Professional" },
     ],
   },
   {
@@ -95,7 +93,7 @@ export const questions: Question[] = [
     placeholder: "e.g., Summer Analyst, Marketing Intern",
     conditional: {
       dependsOn: "lifeStage",
-      values: ["recent_grad", "professional"],
+      values: ["professional"],
     },
   },
   {
@@ -107,7 +105,7 @@ export const questions: Question[] = [
     placeholder: "e.g., Goldman Sachs, Google, Local Startup",
     conditional: {
       dependsOn: "lifeStage",
-      values: ["recent_grad", "professional"],
+      values: ["professional"],
     },
   },
   {
