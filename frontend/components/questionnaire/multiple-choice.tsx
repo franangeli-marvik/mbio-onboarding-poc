@@ -9,7 +9,7 @@ interface MultipleChoiceProps {
   options: Option[];
   value: string;
   onChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (selectedValue?: string) => void;
 }
 
 export default function MultipleChoice({
@@ -21,8 +21,9 @@ export default function MultipleChoice({
   const handleSelect = (optionValue: string) => {
     onChange(optionValue);
     // Auto-submit after a brief delay for smooth UX
+    // Pass the selected value directly to avoid race condition
     setTimeout(() => {
-      onSubmit();
+      onSubmit(optionValue);
     }, 300);
   };
 

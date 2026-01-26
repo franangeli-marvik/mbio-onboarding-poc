@@ -81,13 +81,16 @@ export default function QuestionnairePage() {
     }
   }, [currentIndex, currentQuestion, answers]);
 
-  const handleNext = async () => {
-    if (!currentAnswer.trim() && currentQuestion.type !== 'select') return;
+  const handleNext = async (selectedValue?: string) => {
+    // Use selectedValue if provided (from MultipleChoice), otherwise use currentAnswer
+    const answerValue = selectedValue ?? currentAnswer;
+    
+    if (!answerValue.trim() && currentQuestion.type !== 'select') return;
 
     // Save answer
     const updatedAnswers = {
       ...answers,
-      [currentQuestion.id]: currentAnswer
+      [currentQuestion.id]: answerValue
     };
     setAnswers(updatedAnswers);
 
