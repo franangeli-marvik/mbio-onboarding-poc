@@ -38,7 +38,7 @@ const demoAnswers: Record<string, string> = {
 // primaryGoal will be asked by the voice agent as the first question
 const BASICS_QUESTION_IDS = ['name', 'location', 'lifeStage'];
 
-type InterviewMode = 'basics' | 'voice' | 'generating';
+type InterviewMode = 'basics' | 'resume-upload' | 'voice' | 'generating';
 
 export default function QuestionnairePage() {
   const router = useRouter();
@@ -49,6 +49,8 @@ export default function QuestionnairePage() {
   const [currentAnswer, setCurrentAnswer] = useState('');
   const [isAnimating, setIsAnimating] = useState(false);
   const [mode, setMode] = useState<InterviewMode>('basics');
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [linkedinUrl, setLinkedinUrl] = useState('');
 
   // Fetch questions from API on mount
   useEffect(() => {
@@ -94,9 +96,17 @@ export default function QuestionnairePage() {
 
     // Check if this is the last BASICS question
     if (currentIndex === visibleBasicsQuestions.length - 1) {
-      // Transition to voice interview mode
+      // Check life stage to determine next mode
+      const lifeStage = updatedAnswers.lifeStage;
+      
       setTimeout(() => {
-        setMode('voice');
+        if (lifeStage === 'professional') {
+          // Professional flow: go to resume upload
+          setMode('resume-upload');
+        } else {
+          // Student flow: go to voice interview
+          setMode('voice');
+        }
         setIsAnimating(false);
       }, 400);
       return;
@@ -174,6 +184,144 @@ export default function QuestionnairePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40">
         <p className="text-gray-600">Loading questions...</p>
+      </div>
+    );
+  }
+
+  // Resume upload mode (for professionals)
+  if (mode === 'resume-upload') {
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        setResumeFile(file);
+      }
+    };
+
+    const handleContinue = () => {
+      // For now, just proceed to generating mode
+      // In the future, this will process the resume/LinkedIn
+      if (resumeFile || linkedinUrl.trim()) {
+        setMode('generating');
+        // TODO: Process resume/LinkedIn and generate profile
+        // For now, just show a message
+        setTimeout(() => {
+          alert('Resume/LinkedIn processing coming soon! For now, please use the Student flow.');
+          setMode('resume-upload');
+        }, 2000);
+      }
+    };
+
+    return (
+      <div className="min-h-screen w-full bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40 flex flex-col">
+        {/* Progress indicator */}
+        <div className="w-full pt-8">
+          <ProgressIndicator
+            currentStep={1}
+            totalSteps={5}
+            steps={getPhaseSteps()}
+          />
+        </div>
+
+        {/* Main content */}
+        <div className="flex-1 flex items-center justify-center px-4 py-12">
+          <div className="max-w-xl w-full space-y-8">
+            {/* Title */}
+            <div className="text-center space-y-3">
+              <h1 className="text-4xl font-serif font-semibold text-gray-800">
+                Upload your resume or input your LinkedIn profile
+              </h1>
+              <p className="text-lg text-gray-600">
+                We'll use this to create your profile automatically.
+              </p>
+            </div>
+
+            {/* Upload section */}
+            <div className="space-y-6">
+              {/* File upload */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  Resume / CV
+                </label>
+                <div 
+                  className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer hover:border-msu-green-light hover:bg-white/50 ${
+                    resumeFile ? 'border-msu-green bg-emerald-50/50' : 'border-gray-300'
+                  }`}
+                  onClick={() => document.getElementById('resume-input')?.click()}
+                >
+                  <input
+                    id="resume-input"
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  {resumeFile ? (
+                    <div className="space-y-2">
+                      <div className="w-12 h-12 mx-auto rounded-full bg-msu-green/10 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-msu-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-800 font-medium">{resumeFile.name}</p>
+                      <p className="text-sm text-gray-500">Click to change file</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="w-12 h-12 mx-auto rounded-full bg-gray-100 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-600">Drop your resume here or click to browse</p>
+                      <p className="text-sm text-gray-400">PDF, DOC, or DOCX</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="flex items-center gap-4">
+                <div className="flex-1 h-px bg-gray-200"></div>
+                <span className="text-sm text-gray-400">or</span>
+                <div className="flex-1 h-px bg-gray-200"></div>
+              </div>
+
+              {/* LinkedIn input */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  LinkedIn Profile URL
+                </label>
+                <input
+                  type="url"
+                  value={linkedinUrl}
+                  onChange={(e) => setLinkedinUrl(e.target.value)}
+                  placeholder="https://linkedin.com/in/yourprofile"
+                  className="w-full px-4 py-4 bg-white/50 backdrop-blur-sm border-2 border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-msu-green-light transition-colors text-lg"
+                />
+              </div>
+            </div>
+
+            {/* Continue button */}
+            <div className="flex flex-col items-center gap-4 pt-4">
+              <button
+                onClick={handleContinue}
+                disabled={!resumeFile && !linkedinUrl.trim()}
+                className="px-8 py-4 bg-msu-green text-white rounded-full text-lg font-medium hover:bg-msu-green-light transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
+              >
+                Continue
+              </button>
+              <button
+                onClick={() => {
+                  setMode('basics');
+                  setCurrentIndex(visibleBasicsQuestions.length - 1);
+                }}
+                className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                ← Back
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
