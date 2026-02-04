@@ -451,6 +451,47 @@ async def get_session_audio(session_id: str):
     )
 
 
+class PrepareInterviewRequest(BaseModel):
+    resume_data: dict
+    life_stage: str  # "student" or "professional"
+    user_name: str
+
+
+@app.post("/api/prepare-interview")
+async def prepare_interview(request: PrepareInterviewRequest):
+    """
+    Run the agentic pipeline to prepare a personalized voice interview.
+    
+    Takes parsed resume data and returns a complete interview briefing
+    for the voice agent.
+    
+    Pipeline:
+    1. Profile Analyzer - Identifies strengths, gaps, interesting hooks
+    2. Question Planner - Creates personalized questions
+    3. Interview Briefer - Generates voice agent context
+    """
+    from interview_prep import run_interview_prep_pipeline
+    
+    try:
+        result = await run_interview_prep_pipeline(
+            resume_data=request.resume_data,
+            life_stage=request.life_stage,
+            user_name=request.user_name
+        )
+        
+        return {
+            "success": True,
+            "interview_briefing": result.get("interview_briefing"),
+            "profile_analysis": result.get("profile_analysis"),
+            "interview_plan": result.get("interview_plan"),
+            "errors": result.get("errors", [])
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Interview preparation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to prepare interview: {str(e)}")
+
+
 @app.post("/api/process-resume")
 async def process_resume(
     file: UploadFile = File(...),
@@ -525,6 +566,107 @@ async def process_resume(
     except Exception as e:
         print(f"[ERROR] Resume processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process resume: {str(e)}")
+
+
+@app.post("/api/process-resume-and-prepare")
+async def process_resume_and_prepare_interview(
+    file: UploadFile = File(...),
+    life_stage: str = Form(...),
+    linkedin_url: Optional[str] = Form(None)
+):
+    """
+    Combined endpoint: Parse resume AND run the agentic interview prep pipeline.
+    
+    This is the full flow for preparing a personalized voice interview:
+    1. Parse the resume with Gemini
+    2. Run the 3-agent pipeline (Profile Analyzer -> Question Planner -> Interview Briefer)
+    3. Return the complete interview briefing ready for the voice agent
+    
+    Use this endpoint when you want to go from resume upload directly to
+    a prepared interview in one call.
+    """
+    from resume_parser import parse_resume, get_mime_type
+    from interview_prep import run_interview_prep_pipeline
+    
+    # Validate file type
+    allowed_types = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/msword'
+    ]
+    
+    mime_type = file.content_type
+    if mime_type not in allowed_types:
+        try:
+            mime_type = get_mime_type(file.filename)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    # Validate life_stage
+    if life_stage not in ["student", "professional"]:
+        raise HTTPException(status_code=400, detail="life_stage must be 'student' or 'professional'")
+    
+    # Read file
+    file_bytes = await file.read()
+    
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+    
+    if len(file_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 50MB")
+    
+    try:
+        # Step 1: Parse resume
+        print(f"[INFO] Step 1: Parsing resume...")
+        extracted_data = await parse_resume(
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+            filename=file.filename
+        )
+        
+        # Add LinkedIn URL if provided
+        if linkedin_url and linkedin_url.strip():
+            if "basics" not in extracted_data:
+                extracted_data["basics"] = {}
+            if "profiles" not in extracted_data["basics"]:
+                extracted_data["basics"]["profiles"] = []
+            
+            linkedin_exists = any(
+                p.get("network", "").lower() == "linkedin" 
+                for p in extracted_data["basics"]["profiles"]
+            )
+            
+            if not linkedin_exists:
+                extracted_data["basics"]["profiles"].append({
+                    "network": "LinkedIn",
+                    "url": linkedin_url.strip()
+                })
+        
+        # Get user name from resume
+        user_name = extracted_data.get("basics", {}).get("name", "Candidate")
+        
+        # Step 2: Run interview prep pipeline
+        print(f"[INFO] Step 2: Running interview prep pipeline for {user_name}...")
+        prep_result = await run_interview_prep_pipeline(
+            resume_data=extracted_data,
+            life_stage=life_stage,
+            user_name=user_name
+        )
+        
+        return {
+            "success": True,
+            "resume_data": extracted_data,
+            "interview_briefing": prep_result.get("interview_briefing"),
+            "profile_analysis": prep_result.get("profile_analysis"),
+            "interview_plan": prep_result.get("interview_plan"),
+            "pipeline_errors": prep_result.get("errors", [])
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"[ERROR] Process and prepare failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process resume and prepare interview: {str(e)}")
 
 
 if __name__ == "__main__":

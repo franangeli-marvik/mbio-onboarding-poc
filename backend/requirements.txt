@@ -21,5 +21,11 @@ openai>=1.0.0
 # Google GenAI for resume parsing
 google-genai>=1.0.0
 
+# LangGraph for agentic interview prep pipeline
+langgraph>=0.2.0
+
+# Langfuse for observability (self-hosted)
+langfuse>=2.0.0
+
 # WebSocket support
 websockets>=12.0
