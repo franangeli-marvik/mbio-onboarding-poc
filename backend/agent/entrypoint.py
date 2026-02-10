@@ -455,15 +455,17 @@ async def entrypoint(ctx: agents.JobContext):
 
     if first_question:
         personalized_instruction = (
-            f"The user's name is {user_name}. Greet them warmly by name and "
+            f"IMPORTANT: Speak ONLY in English. "
+            f"The user's name is {user_name}. Greet them warmly by name in English and "
             f"start with this first question: {first_question}. "
-            f"Keep your greeting brief."
+            f"Keep your greeting brief. Do NOT use any other language."
         )
     else:
         personalized_instruction = (
-            f"The user's name is {user_name}. Greet them warmly by name and "
+            f"IMPORTANT: Speak ONLY in English. "
+            f"The user's name is {user_name}. Greet them warmly by name in English and "
             f"start the interview. Ask about their primary career goal. "
-            f"Keep your greeting brief."
+            f"Keep your greeting brief. Do NOT use any other language."
         )
 
     await session.generate_reply(instructions=personalized_instruction)
