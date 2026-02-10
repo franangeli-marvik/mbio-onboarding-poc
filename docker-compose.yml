@@ -128,6 +128,10 @@ services:
       - LANGFUSE_HOST=http://langfuse:3000
       - LANGFUSE_PUBLIC_KEY=pk-lf-70188066-0f9a-44b1-ab9d-d1d9214c8bbe
       - LANGFUSE_SECRET_KEY=sk-lf-1287c1cb-4787-48e2-9f69-d21671c50d82
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_PUBLIC_URL=ws://136.119.132.38:7880
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=secret
     extra_hosts:
       - "metadata.google.internal:169.254.169.254"
     volumes:
