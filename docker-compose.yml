@@ -152,11 +152,16 @@ services:
       - PYTHONPATH=/app
       - GOOGLE_CLOUD_PROJECT=mbio-profile-creation
       - DATA_DIR=/data
+      - LANGFUSE_HOST=http://langfuse:3000
+      - LANGFUSE_PUBLIC_KEY=pk-lf-70188066-0f9a-44b1-ab9d-d1d9214c8bbe
+      - LANGFUSE_SECRET_KEY=sk-lf-1287c1cb-4787-48e2-9f69-d21671c50d82
     extra_hosts:
       - "metadata.google.internal:169.254.169.254"
     volumes:
       - ./backend:/app
       - mbio_data:/data
+    depends_on:
+      - langfuse
     restart: unless-stopped
 
 volumes:

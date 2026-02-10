@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -26,6 +27,30 @@ logging.getLogger("opentelemetry.exporter.otlp.proto.http._log_exporter").setLev
 logging.getLogger("opentelemetry.exporter.otlp.proto.http.trace_exporter").setLevel(
     logging.CRITICAL
 )
+
+
+def setup_langfuse():
+    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+    host = os.getenv("LANGFUSE_HOST", "http://localhost:3333")
+    if not public_key or not secret_key:
+        print("[AGENT] Langfuse keys not set, skipping tracing setup")
+        return
+    try:
+        from livekit.agents.telemetry import set_tracer_provider
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+        auth = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
+        os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"{host.rstrip('/')}/api/public/otel"
+        os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {auth}"
+        provider = TracerProvider()
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        set_tracer_provider(provider)
+        print(f"[AGENT] Langfuse tracing enabled -> {host}")
+    except Exception as e:
+        print(f"[AGENT] Failed to setup Langfuse tracing: {e}")
 
 OUTPUT_DIR = Path(DATA_DIR)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -242,6 +267,7 @@ INACTIVITY_TIMEOUT = 300
 
 
 async def entrypoint(ctx: agents.JobContext):
+    setup_langfuse()
     await ctx.connect()
 
     room_name = ctx.room.name
