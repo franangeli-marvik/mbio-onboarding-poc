@@ -29,7 +29,15 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
   const roomRef = useRef<Room | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const completingRef = useRef(false);
+  const farewellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const participantName = basicsAnswers.name || 'User';
+
+  const FAREWELL_PATTERNS = [
+    'interview is complete', 'interview complete', 'enhanced resume',
+    'resume will be ready', 'good luck', 'goodbye', 'that wraps up',
+    'best of luck', 'hasta luego', 'gracias por tu tiempo',
+    'thank you for your time', 'take care',
+  ];
 
   // Map voice state to persona state
   const getPersonaState = (): PersonaState => {
@@ -135,6 +143,22 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
                 text,
                 timestamp: new Date().toISOString()
               }]);
+
+              if (!completingRef.current) {
+                const lower = text.toLowerCase();
+                const isFarewell = FAREWELL_PATTERNS.some(p => lower.includes(p));
+                if (isFarewell) {
+                  console.log('Farewell detected in agent transcript — auto-completing in 4s');
+                  if (farewellTimerRef.current) clearTimeout(farewellTimerRef.current);
+                  farewellTimerRef.current = setTimeout(() => {
+                    if (!completingRef.current) {
+                      completingRef.current = true;
+                      setInterviewEnded(true);
+                      setVoiceState('completing');
+                    }
+                  }, 4000);
+                }
+              }
             }
           } else {
             setUserText(text);
@@ -291,6 +315,7 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (farewellTimerRef.current) clearTimeout(farewellTimerRef.current);
       disconnect();
     };
   }, [disconnect]);

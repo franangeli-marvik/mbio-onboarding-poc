@@ -152,7 +152,7 @@ def build_agent_instructions(briefing: dict | None) -> str:
     candidate_context = briefing.get("candidate_context", "")
     guidelines = briefing.get("conversation_guidelines", "")
     if isinstance(guidelines, dict):
-        guidelines = "\n".join(f"{k}: {v}" for k, v in guidelines.items())
+        guidelines = "\n".join(f"- {k}: {v}" for k, v in guidelines.items())
     questions_script = briefing.get("questions_script", [])
     topics_to_avoid = briefing.get("topics_to_avoid", [])
     personalization_hints = briefing.get("personalization_hints", [])
@@ -167,68 +167,75 @@ def build_agent_instructions(briefing: dict | None) -> str:
 
     avoid_block = ""
     if topics_to_avoid:
-        avoid_block = f"\n\nTOPICS TO AVOID:\n- " + "\n- ".join(topics_to_avoid)
+        avoid_block = "\n- ".join(topics_to_avoid)
 
     hints_block = ""
     if personalization_hints:
-        hints_block = f"\n\nPERSONALIZATION HINTS:\n- " + "\n- ".join(personalization_hints)
+        hints_block = "\n- ".join(personalization_hints)
 
     total_questions = len(questions_script)
 
-    return f"""You are a professional interviewer helping candidates enhance their resume.
+    return f"""# Role & Objective
+You are a professional interviewer helping candidates enhance their resume.
+Your goal is to cover exactly {total_questions} interview questions, gather detailed answers, and then end the session.
 
-IMPORTANT: You must ALWAYS speak in English, regardless of the language the candidate uses.
+# Personality & Tone
+## Tone
+- Warm, encouraging, and conversational
+- Concise — keep responses to 2-3 sentences per turn
+- Use the candidate's name occasionally to make it personal
 
-CANDIDATE CONTEXT:
+## Language
+- The conversation will be ONLY in English.
+- Do NOT respond in any other language even if the user speaks Spanish, Italian, French, or any other language.
+- If the user speaks another language, acknowledge in English and continue in English.
+
+# Context
+## Candidate Background
 {candidate_context}
 
-CONVERSATION GUIDELINES:
+## Conversation Guidelines
 {guidelines}
 
-INTERVIEW QUESTIONS ({total_questions} total) - Ask these IN ORDER, one at a time:
-{questions_block}
-{avoid_block}
-{hints_block}
-
-CONVERSATION STYLE:
-- Be warm, encouraging, and conversational
-- Ask ONE question at a time, wait for their response
+# Instructions
+- Ask ONE question at a time, then wait for the candidate's response
 - Acknowledge what they share before moving to the next topic
-- If they share something interesting, ask a brief follow-up
-- Keep your responses concise - this is a voice conversation
-- Use their name occasionally to make it personal
+- If they share something interesting, ask ONE brief follow-up
+- Do NOT repeat questions already answered
+{f"- TOPICS TO AVOID: {avoid_block}" if avoid_block else ""}
+{f"- PERSONALIZATION HINTS: {hints_block}" if hints_block else ""}
 
-INTERVIEW COMPLETION:
-- You have exactly {total_questions} questions to cover
-- After you have asked ALL {total_questions} questions and received answers, wrap up the interview
-- Thank the candidate warmly for their time and insights
-- Let them know the interview is complete and their enhanced resume will be ready shortly
-- Then call end_interview() immediately - do NOT wait for the candidate to say goodbye
+# Conversation Flow
+## Questions ({total_questions} total) — ask IN ORDER:
+{questions_block}
 
-EARLY EXIT:
-- If the candidate says goodbye in ANY language (bye, chau, adios, ciao, goodbye, see you, etc.) or indicates they want to leave, say a brief warm farewell in English and IMMEDIATELY call end_interview()
+## Completion
+- After ALL {total_questions} questions are covered, thank the candidate warmly
+- Tell them their enhanced resume will be ready shortly
+- Say a brief goodbye in English
+- IMMEDIATELY call end_interview() — do NOT wait for the candidate to respond
+
+## Early Exit
+- If the candidate says goodbye in ANY language (bye, chau, adios, ciao, see you, etc.) or wants to leave:
+  1. Say a brief warm farewell in English
+  2. IMMEDIATELY call end_interview()
 - Do NOT continue asking questions after the candidate wants to leave
-- This is critical: ANY farewell from the candidate must trigger end_interview()
+
+# Tools
+- end_interview(): Call this IMMEDIATELY after your farewell message. Do NOT skip this function call. This is CRITICAL.
+- Before calling end_interview(), always say a short farewell like "Thank you for your time. Your enhanced resume will be ready shortly!"
 """
 
 
 class Assistant(Agent):
-    def __init__(self, end_conversation_callback, instructions: str | None = None) -> None:
+    def __init__(self, instructions: str | None = None) -> None:
         super().__init__(instructions=instructions or AGENT_INSTRUCTION)
-        self._end_conversation_callback = end_conversation_callback
 
     @llm.function_tool
-    async def end_interview(self) -> str:
-        """
-        Call this function when the user indicates they want to end the conversation.
-        This includes any form of goodbye, farewell, or indication that they need to leave.
-        Examples: "bye", "goodbye", "see you", "I have to go", "that's all", "thanks, bye",
-        "chau", "adios", "nos vemos", "me tengo que ir", "hasta luego", etc.
-
-        IMPORTANT: Call this function AFTER you say your final goodbye to the user.
-        """
-        self._end_conversation_callback()
-        return "Interview ended successfully. Goodbye!"
+    async def end_interview(self):
+        """End the interview session. Call this after your farewell message."""
+        await self.session.drain()
+        await self.session.aclose()
 
 
 INACTIVITY_TIMEOUT = 300
@@ -249,16 +256,10 @@ async def entrypoint(ctx: agents.JobContext):
     session_start_time = time.time()
     usage_collector = UsageCollector()
     transcript_history: list[dict] = []
-    shutdown_initiated = False
+    session_closed = False
 
     model = get_realtime_model()
     session = AgentSession(llm=model)
-
-    def end_conversation():
-        nonlocal shutdown_initiated
-        if not shutdown_initiated:
-            shutdown_initiated = True
-            session.shutdown(drain=True)
 
     last_user_speech_end: list[float | None] = [None]
     last_activity_time = [time.time()]
@@ -266,13 +267,14 @@ async def entrypoint(ctx: agents.JobContext):
     current_phase = ["school"]
 
     async def check_inactivity():
-        while not shutdown_initiated:
+        while not session_closed:
             await asyncio.sleep(30)
-            if shutdown_initiated:
+            if session_closed:
                 break
             elapsed = time.time() - last_activity_time[0]
             if elapsed > INACTIVITY_TIMEOUT:
-                end_conversation()
+                await session.drain()
+                await session.aclose()
                 break
 
     asyncio.create_task(check_inactivity())
@@ -354,6 +356,8 @@ async def entrypoint(ctx: agents.JobContext):
 
     @session.on("close")
     def on_close(event):
+        nonlocal session_closed
+        session_closed = True
         session_end_time = time.time()
         duration_seconds = session_end_time - session_start_time
 
@@ -416,10 +420,7 @@ async def entrypoint(ctx: agents.JobContext):
         print(f"[AGENT] ERROR parsing metadata: {e}")
 
     agent_instructions = build_agent_instructions(briefing)
-    assistant = Assistant(
-        end_conversation_callback=end_conversation,
-        instructions=agent_instructions,
-    )
+    assistant = Assistant(instructions=agent_instructions)
 
     await session.start(room=ctx.room, agent=assistant, record=True)
 
