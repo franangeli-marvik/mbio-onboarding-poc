@@ -301,18 +301,6 @@ function QuestionnaireContent() {
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <label className="block text-sm font-medium text-gray-700">
-                  LinkedIn Profile URL (optional)
-                </label>
-                <input
-                  type="url"
-                  value={linkedinUrl}
-                  onChange={(e) => setLinkedinUrl(e.target.value)}
-                  placeholder="https://linkedin.com/in/yourprofile"
-                  className="w-full px-4 py-4 bg-white/50 backdrop-blur-sm border-2 border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-msu-green-light transition-colors text-lg"
-                />
-              </div>
             </div>
 
             {processingError && (

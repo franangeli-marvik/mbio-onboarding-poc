@@ -128,10 +128,6 @@ services:
       - LANGFUSE_HOST=http://langfuse:3000
       - LANGFUSE_PUBLIC_KEY=pk-lf-70188066-0f9a-44b1-ab9d-d1d9214c8bbe
       - LANGFUSE_SECRET_KEY=sk-lf-1287c1cb-4787-48e2-9f69-d21671c50d82
-      - LIVEKIT_URL=ws://livekit:7880
-      - LIVEKIT_PUBLIC_URL=ws://136.119.132.38:7880
-      - LIVEKIT_API_KEY=devkey
-      - LIVEKIT_API_SECRET=secret
     extra_hosts:
       - "metadata.google.internal:169.254.169.254"
     volumes:
@@ -146,26 +142,12 @@ services:
       timeout: 10s
       retries: 3
 
-  livekit:
-    image: livekit/livekit-server:latest
-    command: --dev --bind 0.0.0.0
-    ports:
-      - "7880:7880"
-      - "7881:7881"
-      - "7882:7882"
-    environment:
-      LIVEKIT_KEYS: "devkey: secret"
-    restart: unless-stopped
-
   agent:
     build: ./backend
-    command: python /app/agent/entrypoint.py dev --url ws://livekit:7880
+    command: python /app/agent/entrypoint.py dev
     env_file:
       - .env
     environment:
-      - LIVEKIT_URL=ws://livekit:7880
-      - LIVEKIT_API_KEY=devkey
-      - LIVEKIT_API_SECRET=secret
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
       - GOOGLE_CLOUD_PROJECT=mbio-profile-creation
@@ -175,8 +157,6 @@ services:
     volumes:
       - ./backend:/app
       - mbio_data:/data
-    depends_on:
-      - livekit
     restart: unless-stopped
 
 volumes:

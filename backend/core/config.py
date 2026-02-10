@@ -47,11 +47,6 @@ def livekit_api_secret() -> str:
     return value
 
 
-@lru_cache
-def livekit_public_url() -> str:
-    return os.getenv("LIVEKIT_PUBLIC_URL", livekit_url())
-
-
 MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "openai").lower()
 GCP_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "mbio-profile-creation")
 GCP_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")

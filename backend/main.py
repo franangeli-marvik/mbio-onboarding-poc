@@ -10,7 +10,7 @@ from livekit import api
 from livekit.api import LiveKitAPI
 from pydantic import BaseModel
 
-from core.config import livekit_url, livekit_public_url, livekit_api_key, livekit_api_secret
+from core.config import livekit_url, livekit_api_key, livekit_api_secret
 from core.extraction import (
     extract_profile_from_transcript,
     extract_profile_features,
@@ -238,7 +238,7 @@ async def generate_token(request: TokenRequest):
         except Exception:
             pass
 
-        return TokenResponse(token=jwt_token, url=livekit_public_url(), room_name=request.room_name)
+        return TokenResponse(token=jwt_token, url=livekit_url(), room_name=request.room_name)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate token: {e}")
 
