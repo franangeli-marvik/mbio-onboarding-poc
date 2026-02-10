@@ -173,9 +173,11 @@ def build_agent_instructions(briefing: dict | None) -> str:
     if personalization_hints:
         hints_block = f"\n\nPERSONALIZATION HINTS:\n- " + "\n- ".join(personalization_hints)
 
+    total_questions = len(questions_script)
+
     return f"""You are a professional interviewer helping candidates enhance their resume.
 
-IMPORTANT: You must ALWAYS speak in English.
+IMPORTANT: You must ALWAYS speak in English, regardless of the language the candidate uses.
 
 CANDIDATE CONTEXT:
 {candidate_context}
@@ -183,7 +185,7 @@ CANDIDATE CONTEXT:
 CONVERSATION GUIDELINES:
 {guidelines}
 
-INTERVIEW QUESTIONS - Ask these IN ORDER, one at a time:
+INTERVIEW QUESTIONS ({total_questions} total) - Ask these IN ORDER, one at a time:
 {questions_block}
 {avoid_block}
 {hints_block}
@@ -196,7 +198,13 @@ CONVERSATION STYLE:
 - Keep your responses concise - this is a voice conversation
 - Use their name occasionally to make it personal
 
-When they indicate they want to leave, say a warm farewell and call end_interview().
+INTERVIEW COMPLETION:
+- You have exactly {total_questions} questions to cover
+- After you have asked ALL {total_questions} questions and received answers, wrap up the interview
+- Thank the candidate warmly for their time and insights
+- Let them know the interview is complete and their enhanced resume will be ready shortly
+- Then call end_interview() immediately - do NOT wait for the candidate to say goodbye
+- If the candidate wants to leave early, respect that and call end_interview() after a brief farewell
 """
 
 

@@ -13,7 +13,7 @@ interface VoiceInterviewProps {
   onComplete: (voiceAnswers: Record<string, string>, transcript: Array<{ role: string; text: string }>) => void;
 }
 
-type VoiceState = 'connecting' | 'listening' | 'thinking' | 'speaking' | 'idle' | 'error';
+type VoiceState = 'connecting' | 'listening' | 'thinking' | 'speaking' | 'idle' | 'completing' | 'error';
 
 export default function VoiceInterview({ basicsAnswers, resumeContext, interviewBriefing, onComplete }: VoiceInterviewProps) {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
@@ -24,9 +24,11 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
   const [showIntro, setShowIntro] = useState(true);
   const [noteText, setNoteText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [interviewEnded, setInterviewEnded] = useState(false);
   
   const roomRef = useRef<Room | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const completingRef = useRef(false);
   const participantName = basicsAnswers.name || 'User';
 
   // Map voice state to persona state
@@ -39,6 +41,7 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
       case 'speaking':
         return 'speaking';
       case 'connecting':
+      case 'completing':
         return 'thinking';
       default:
         return 'idle';
@@ -82,7 +85,9 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
           setVoiceState('listening');
         } else if (state === ConnectionState.Disconnected) {
           setIsConnected(false);
-          setVoiceState('idle');
+          if (!completingRef.current) {
+            setVoiceState('idle');
+          }
         }
       });
 
@@ -176,6 +181,16 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
         console.log('Participant connected:', participant.identity);
       });
 
+      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        console.log('Participant disconnected:', participant.identity);
+        if (participant.identity?.includes('agent') && !completingRef.current) {
+          console.log('Agent left the room - interview complete');
+          completingRef.current = true;
+          setInterviewEnded(true);
+          setVoiceState('completing');
+        }
+      });
+
       // Connect to room
       await room.connect(url, token);
       console.log('Connected to room:', roomName);
@@ -264,12 +279,43 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
     }
   };
 
+  // Auto-complete when agent ends the interview
+  useEffect(() => {
+    if (!interviewEnded) return;
+    const timer = setTimeout(() => {
+      handleComplete();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [interviewEnded, handleComplete]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       disconnect();
     };
   }, [disconnect]);
+
+  // Completing screen - shown when agent ends the interview
+  if (voiceState === 'completing') {
+    return (
+      <div className="min-h-screen w-full bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40 flex flex-col items-center justify-center p-4">
+        <div className="max-w-xl text-center space-y-6">
+          <div className="w-24 h-24 mx-auto rounded-full bg-emerald-100 flex items-center justify-center">
+            <svg className="w-12 h-12 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 className="text-3xl font-serif font-semibold text-gray-800">
+            Interview Complete
+          </h2>
+          <p className="text-lg text-gray-600">
+            Generating your enhanced resume...
+          </p>
+          <div className="w-16 h-1 mx-auto bg-emerald-400 rounded-full animate-pulse" />
+        </div>
+      </div>
+    );
+  }
 
   // Intro screen
   if (showIntro) {
