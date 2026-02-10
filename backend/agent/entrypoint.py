@@ -392,12 +392,19 @@ async def entrypoint(ctx: agents.JobContext):
         os._exit(0)
 
     briefing = None
+    logger = logging.getLogger("mbio.agent")
+    logger.info("Room metadata raw: %s", ctx.room.metadata[:500] if ctx.room.metadata else "EMPTY")
     try:
         if ctx.room.metadata:
             room_meta = json.loads(ctx.room.metadata)
             briefing = room_meta.get("interview_briefing")
-    except Exception:
-        pass
+            logger.info("Briefing found: %s, questions: %d",
+                        briefing is not None,
+                        len(briefing.get("questions_script", [])) if briefing else 0)
+        else:
+            logger.warning("No room metadata available")
+    except Exception as e:
+        logger.error("Failed to parse room metadata: %s", e)
 
     agent_instructions = build_agent_instructions(briefing)
     assistant = Assistant(

@@ -227,16 +227,23 @@ async def generate_token(request: TokenRequest):
                 "participant_name": request.participant_name,
                 "created_at": datetime.now().isoformat(),
             }
+            has_briefing = request.interview_briefing is not None
             if request.interview_briefing:
                 room_metadata["interview_briefing"] = request.interview_briefing
+            import logging
+            logging.getLogger("mbio.token").info(
+                "Creating room %s with briefing=%s, metadata_size=%d",
+                request.room_name, has_briefing, len(json.dumps(room_metadata)),
+            )
             await lk_api.room.create_room(
                 api.CreateRoomRequest(
                     name=request.room_name,
                     metadata=json.dumps(room_metadata),
                 )
             )
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger("mbio.token").error("Room creation failed: %s", e)
 
         return TokenResponse(token=jwt_token, url=livekit_url(), room_name=request.room_name)
     except Exception as e:
