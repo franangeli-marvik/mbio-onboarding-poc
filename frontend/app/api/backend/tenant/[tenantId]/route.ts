@@ -2,20 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:8000';
 
-export async function POST(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ tenantId: string }> }
+) {
   try {
-    const formData = await request.formData();
-
-    const response = await fetch(`${BACKEND_URL}/api/process-resume-and-prepare`, {
-      method: 'POST',
-      body: formData,
-    });
-
+    const { tenantId } = await params;
+    const response = await fetch(`${BACKEND_URL}/api/tenant/${tenantId}`);
     const data = await response.json();
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.detail || 'Failed to process resume' },
+        { error: data.detail || 'Tenant not found' },
         { status: response.status }
       );
     }

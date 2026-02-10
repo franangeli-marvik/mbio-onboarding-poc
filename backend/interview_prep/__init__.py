@@ -1,18 +1,8 @@
-"""
-Interview Prep Pipeline Module
-
-LangGraph-based agentic pipeline for preparing personalized voice interviews
-based on resume context.
-
-Pipeline Flow:
-1. Profile Analyzer - Analyzes resume to identify strengths, gaps, and hooks
-2. Question Planner - Creates personalized questions based on analysis
-3. Interview Briefer - Generates ready-to-use context for voice agent
-"""
-
-from .pipeline import run_interview_prep_pipeline
-from .schemas import (
+from interview_prep.pipeline import run_interview_prep_pipeline
+from interview_prep.schemas import (
     InterviewPrepState,
+    PositionConfig,
+    TenantConfig,
     ProfileAnalysis,
     InterviewPlan,
     InterviewBriefing,
@@ -21,6 +11,8 @@ from .schemas import (
 __all__ = [
     "run_interview_prep_pipeline",
     "InterviewPrepState",
+    "PositionConfig",
+    "TenantConfig",
     "ProfileAnalysis",
     "InterviewPlan",
     "InterviewBriefing",

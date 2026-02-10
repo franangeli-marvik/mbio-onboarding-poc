@@ -1,47 +1,45 @@
 'use client';
 
-import { useState, useEffect, lazy, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Question, getVisibleQuestions, getPhaseSteps } from '@/lib/questions';
 import QuestionWrapper from '@/components/questionnaire/question-wrapper';
 import TextInput from '@/components/questionnaire/text-input';
 import MultipleChoice from '@/components/questionnaire/multiple-choice';
 import ProgressIndicator from '@/components/questionnaire/progress-indicator';
 
-// Lazy load VoiceInterview to avoid loading Rive on initial page load
 const VoiceInterview = lazy(() => import('@/components/voice/voice-interview'));
 
-// Demo answers for quick testing
-const demoAnswers: Record<string, string> = {
-  name: 'Marcus Washington',
-  location: 'East Lansing, MI',
-  lifeStage: 'student',
-  primaryGoal: 'Landing a corporate finance role at a top investment bank after graduation, with a focus on sports and entertainment clients.',
-  major: 'Finance with a minor in Sports Management',
-  university: 'Michigan State University',
-  jobTitle: 'Summer Analyst',
-  company: 'Goldman Sachs',
-  bigWin: 'Led a team project analyzing $50M in athlete endorsement deals, identifying undervalued opportunities that resulted in a 23% ROI improvement. Presented findings directly to senior partners.',
-  academicHistory: "Dean's List all semesters, Presidential Scholarship recipient, completed CFA Level 1, led the MSU Investment Club portfolio team.",
-  xFactorCategory: 'sports',
-  xFactorDetail: 'Team Captain of D1 Football - led the team to a conference championship. Balanced 40+ hours/week of training with a 3.8 GPA.',
-  xFactorLessons: 'Being captain taught me how to motivate diverse personalities, make quick decisions under pressure, and that preparation beats talent when talent is unprepared.',
-  hardSkills: 'Excel/Financial Modeling, Python, Bloomberg Terminal, PowerPoint, SQL',
-  softSkillsFriend: 'Relentless, Loyal, Clutch',
-  softSkillsSelf: 'Disciplined, Strategic, Empathetic',
-  legacyStatement: 'I want to help professional athletes build generational wealth and break the cycle of financial instability that affects 78% of NFL players within 3 years of retirement.',
-  aestheticVibe: 'professional',
-  socialLinks: 'linkedin.com/in/marcuswashington, twitter.com/mwash_finance',
-};
+interface TenantPosition {
+  id: string;
+  title: string;
+  focus_area: string;
+}
 
-// BASICS phase questions (keyboard input) - only 3 questions
-// primaryGoal will be asked by the voice agent as the first question
-const BASICS_QUESTION_IDS = ['name', 'location', 'lifeStage'];
+interface TenantData {
+  tenant_id: string;
+  company_name: string;
+  tone: string;
+  positions: TenantPosition[];
+}
 
-type InterviewMode = 'basics' | 'resume-upload' | 'voice' | 'generating';
+const BASICS_QUESTION_IDS = ['name', 'location'];
+
+type InterviewMode = 'basics' | 'position-select' | 'resume-upload' | 'pipeline-loading' | 'voice';
+
+const PIPELINE_STEPS = [
+  'Parsing resume...',
+  'Analyzing profile...',
+  'Planning questions...',
+  'Preparing interview...',
+];
+const STEP_INTERVAL_MS = 10_000;
 
 export default function QuestionnairePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tenantId = searchParams.get('tenant') || 'default';
+
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -52,32 +50,40 @@ export default function QuestionnairePage() {
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [resumeContext, setResumeContext] = useState<Record<string, unknown> | null>(null);
-  const [isProcessingResume, setIsProcessingResume] = useState(false);
   const [processingError, setProcessingError] = useState<string | null>(null);
 
-  // Fetch questions from API on mount
+  const [interviewBriefing, setInterviewBriefing] = useState<Record<string, unknown> | null>(null);
+  const [tenantData, setTenantData] = useState<TenantData | null>(null);
+  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
+
   useEffect(() => {
-    async function loadQuestions() {
+    async function load() {
       try {
-        const res = await fetch('/api/questions');
-        const data = await res.json();
-        setQuestions(data.questions);
+        const [questionsRes, tenantRes] = await Promise.all([
+          fetch('/api/questions'),
+          fetch(`/api/backend/tenant/${tenantId}`),
+        ]);
+        const questionsData = await questionsRes.json();
+        setQuestions(questionsData.questions);
+
+        if (tenantRes.ok) {
+          const tenant = await tenantRes.json();
+          setTenantData(tenant);
+        }
       } catch (error) {
-        console.error('Failed to load questions:', error);
+        console.error('Failed to load initial data:', error);
       } finally {
         setLoading(false);
       }
     }
-    loadQuestions();
-  }, []);
+    load();
+  }, [tenantId]);
 
-  // Filter to only BASICS questions for keyboard phase
   const basicsQuestions = questions.filter(q => BASICS_QUESTION_IDS.includes(q.id));
   const visibleBasicsQuestions = getVisibleQuestions(basicsQuestions, answers);
   const currentQuestion = visibleBasicsQuestions[currentIndex];
   const progress = Math.round(((currentIndex + 1) / visibleBasicsQuestions.length) * 100);
 
-  // Update current answer when question changes
   useEffect(() => {
     if (currentQuestion) {
       setCurrentAnswer(answers[currentQuestion.id] || '');
@@ -85,33 +91,25 @@ export default function QuestionnairePage() {
   }, [currentIndex, currentQuestion, answers]);
 
   const handleNext = async (selectedValue?: string | unknown) => {
-    // Use selectedValue if provided (from MultipleChoice), otherwise use currentAnswer
-    // Check if selectedValue is actually a string (not an event object)
     const answerValue = (typeof selectedValue === 'string') ? selectedValue : currentAnswer;
-    
     if (!answerValue.trim() && currentQuestion.type !== 'select') return;
 
-    // Save answer
     const updatedAnswers = {
       ...answers,
-      [currentQuestion.id]: answerValue
+      [currentQuestion.id]: answerValue,
     };
     setAnswers(updatedAnswers);
 
-    // Animate out
     setIsAnimating(true);
 
-    // Check if this is the last BASICS question
     if (currentIndex === visibleBasicsQuestions.length - 1) {
-      // All users go to resume upload step (optional)
       setTimeout(() => {
-        setMode('resume-upload');
+        setMode('position-select');
         setIsAnimating(false);
       }, 400);
       return;
     }
 
-    // Move to next question after animation
     setTimeout(() => {
       setCurrentIndex(prev => prev + 1);
       setIsAnimating(false);
@@ -120,7 +118,6 @@ export default function QuestionnairePage() {
 
   const handleBack = () => {
     if (currentIndex === 0) return;
-
     setIsAnimating(true);
     setTimeout(() => {
       setCurrentIndex(prev => prev - 1);
@@ -128,131 +125,35 @@ export default function QuestionnairePage() {
     }, 300);
   };
 
-  const handleAutofill = () => {
-    if (currentQuestion && demoAnswers[currentQuestion.id]) {
-      setCurrentAnswer(demoAnswers[currentQuestion.id]);
-    }
-  };
-
-  // Handle voice interview completion
-  const handleVoiceComplete = async (
-    voiceAnswers: Record<string, string>,
+  const handleVoiceComplete = (
+    _voiceAnswers: Record<string, string>,
     transcript: Array<{ role: string; text: string }>
   ) => {
-    setMode('generating');
-
-    try {
-      // Use local proxy to avoid mixed content issues
-      const response = await fetch(`/api/backend/generate-profile`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          basics_answers: answers,
-          transcript: transcript,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.profile) {
-        // Store profile, transcript, and extracted features in sessionStorage
-        sessionStorage.setItem('generatedProfile', JSON.stringify(data.profile));
-        sessionStorage.setItem('interviewTranscript', JSON.stringify(transcript));
-        if (data.extracted_features) {
-          sessionStorage.setItem('extractedFeatures', JSON.stringify(data.extracted_features));
-        }
-
-        // Navigate to preview
-        router.push('/profile/preview');
-      } else {
-        console.error('Profile generation failed:', data.error || data.detail);
-        alert('Failed to generate profile. Please try again.');
-        setMode('voice');
-      }
-    } catch (error) {
-      console.error('Error generating profile:', error);
-      alert('An error occurred. Please try again.');
-      setMode('voice');
-    }
+    sessionStorage.setItem('interviewTranscript', JSON.stringify(transcript));
+    router.push('/profile/preview');
   };
 
-  // Loading state
   if (loading || (mode === 'basics' && !currentQuestion)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40">
-        <p className="text-gray-600">Loading questions...</p>
+        <p className="text-gray-600">Loading...</p>
       </div>
     );
   }
 
-  // Resume upload mode (optional for all users)
-  if (mode === 'resume-upload') {
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        setResumeFile(file);
-      }
-    };
+  if (mode === 'position-select') {
+    const positions = tenantData?.positions || [];
+    const companyName = tenantData?.company_name || 'M.bio';
 
-    const handleContinue = async () => {
-      // Process resume if uploaded
-      if (resumeFile || linkedinUrl.trim()) {
-        setIsProcessingResume(true);
-        setProcessingError(null);
-        
-        try {
-          const formData = new FormData();
-          if (resumeFile) {
-            formData.append('file', resumeFile);
-          }
-          if (linkedinUrl.trim()) {
-            formData.append('linkedin_url', linkedinUrl.trim());
-          }
-          
-          const response = await fetch('/api/backend/process-resume', {
-            method: 'POST',
-            body: formData,
-          });
-          
-          const data = await response.json();
-          
-          if (data.success && data.data) {
-            // Store the extracted resume context
-            setResumeContext(data.data);
-            sessionStorage.setItem('resumeContext', JSON.stringify(data.data));
-            console.log('Resume processed successfully:', data.data);
-          } else {
-            console.error('Resume processing failed:', data.error);
-            setProcessingError(data.error || 'Failed to process resume');
-            setIsProcessingResume(false);
-            return; // Don't proceed if processing failed
-          }
-        } catch (error) {
-          console.error('Error processing resume:', error);
-          setProcessingError('Failed to connect to server. Please try again.');
-          setIsProcessingResume(false);
-          return;
-        }
-        
-        setIsProcessingResume(false);
-      }
-      
-      // Continue to voice interview
-      setMode('voice');
-    };
-
-    const handleSkip = () => {
-      // Skip resume upload, go directly to voice interview
-      setResumeFile(null);
-      setLinkedinUrl('');
-      setMode('voice');
+    const handlePositionSelect = (positionId: string) => {
+      setSelectedPositionId(positionId);
+      setTimeout(() => {
+        setMode('resume-upload');
+      }, 300);
     };
 
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40 flex flex-col">
-        {/* Progress indicator */}
         <div className="w-full pt-8">
           <ProgressIndicator
             currentStep={1}
@@ -261,27 +162,97 @@ export default function QuestionnairePage() {
           />
         </div>
 
-        {/* Main content */}
         <div className="flex-1 flex items-center justify-center px-4 py-12">
           <div className="max-w-xl w-full space-y-8">
-            {/* Title */}
             <div className="text-center space-y-3">
               <h1 className="text-4xl font-serif font-semibold text-gray-800">
-                Before we progress, would you like to upload your resume and LinkedIn profile URL?
+                Which position are you applying for?
               </h1>
               <p className="text-lg text-gray-600">
-                This helps us make your profile even better.
+                Select the role at {companyName} that best matches your profile.
               </p>
             </div>
 
-            {/* Upload section */}
+            <div className="grid gap-3 w-full">
+              {positions.map((position) => (
+                <button
+                  key={position.id}
+                  onClick={() => handlePositionSelect(position.id)}
+                  className={`
+                    px-6 py-5 text-left rounded-2xl border-2 transition-all duration-300
+                    ${selectedPositionId === position.id
+                      ? 'bg-msu-green text-white border-msu-green shadow-lg scale-[1.02]'
+                      : 'bg-white/50 backdrop-blur-sm text-gray-800 border-gray-200 hover:border-msu-green-light hover:shadow-md'
+                    }
+                  `}
+                >
+                  <span className="text-lg font-medium block">{position.title}</span>
+                  <span className={`text-sm mt-1 block ${
+                    selectedPositionId === position.id ? 'text-white/80' : 'text-gray-500'
+                  }`}>
+                    {position.focus_area}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex justify-center pt-4">
+              <button
+                onClick={() => {
+                  setMode('basics');
+                  setCurrentIndex(visibleBasicsQuestions.length - 1);
+                }}
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                &larr; Back
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === 'resume-upload') {
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        setResumeFile(file);
+      }
+    };
+
+    const handleContinue = () => {
+      if (!resumeFile) return;
+      setMode('pipeline-loading');
+    };
+
+    return (
+      <div className="min-h-screen w-full bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40 flex flex-col">
+        <div className="w-full pt-8">
+          <ProgressIndicator
+            currentStep={2}
+            totalSteps={5}
+            steps={getPhaseSteps()}
+          />
+        </div>
+
+        <div className="flex-1 flex items-center justify-center px-4 py-12">
+          <div className="max-w-xl w-full space-y-8">
+            <div className="text-center space-y-3">
+              <h1 className="text-4xl font-serif font-semibold text-gray-800">
+                Upload your resume
+              </h1>
+              <p className="text-lg text-gray-600">
+                We'll use it to personalize your interview experience.
+              </p>
+            </div>
+
             <div className="space-y-6">
-              {/* File upload */}
               <div className="space-y-3">
                 <label className="block text-sm font-medium text-gray-700">
                   Resume / CV
                 </label>
-                <div 
+                <div
                   className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer hover:border-msu-green-light hover:bg-white/50 ${
                     resumeFile ? 'border-msu-green bg-emerald-50/50' : 'border-gray-300'
                   }`}
@@ -318,10 +289,9 @@ export default function QuestionnairePage() {
                 </div>
               </div>
 
-              {/* LinkedIn input */}
               <div className="space-y-3">
                 <label className="block text-sm font-medium text-gray-700">
-                  LinkedIn Profile URL
+                  LinkedIn Profile URL (optional)
                 </label>
                 <input
                   type="url"
@@ -333,48 +303,25 @@ export default function QuestionnairePage() {
               </div>
             </div>
 
-            {/* Error message */}
             {processingError && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
                 {processingError}
               </div>
             )}
 
-            {/* Action buttons */}
             <div className="flex flex-col items-center gap-4 pt-4">
               <button
                 onClick={handleContinue}
-                disabled={(!resumeFile && !linkedinUrl.trim()) || isProcessingResume}
-                className="w-full max-w-sm px-8 py-4 bg-msu-green text-white rounded-full text-lg font-medium hover:bg-msu-green-light transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg flex items-center justify-center gap-2"
+                disabled={!resumeFile}
+                className="w-full max-w-sm px-8 py-4 bg-msu-green text-white rounded-full text-lg font-medium hover:bg-msu-green-light transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
               >
-                {isProcessingResume ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Processing resume...
-                  </>
-                ) : (
-                  'Continue'
-                )}
+                Continue
               </button>
               <button
-                onClick={handleSkip}
-                disabled={isProcessingResume}
-                className="text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+                onClick={() => setMode('position-select')}
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
               >
-                Skip for now
-              </button>
-              <button
-                onClick={() => {
-                  setMode('basics');
-                  setCurrentIndex(visibleBasicsQuestions.length - 1);
-                }}
-                disabled={isProcessingResume}
-                className="text-sm text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
-              >
-                ← Back
+                &larr; Back
               </button>
             </div>
           </div>
@@ -383,14 +330,45 @@ export default function QuestionnairePage() {
     );
   }
 
-  // Voice interview mode
+  if (mode === 'pipeline-loading') {
+    return (
+      <PipelineLoadingScreen
+        resumeFile={resumeFile!}
+        tenantId={tenantId}
+        positionId={selectedPositionId || ''}
+        linkedinUrl={linkedinUrl}
+        onComplete={(data) => {
+          if (data.resume_data) {
+            setResumeContext(data.resume_data as Record<string, unknown>);
+            sessionStorage.setItem('resumeContext', JSON.stringify(data.resume_data));
+          }
+          if (data.interview_briefing) {
+            setInterviewBriefing(data.interview_briefing as Record<string, unknown>);
+            sessionStorage.setItem('interviewBriefing', JSON.stringify(data.interview_briefing));
+          }
+          if (data.profile_analysis) {
+            sessionStorage.setItem('profileAnalysis', JSON.stringify(data.profile_analysis));
+          }
+          if (data.interview_plan) {
+            sessionStorage.setItem('interviewPlan', JSON.stringify(data.interview_plan));
+          }
+          setMode('voice');
+        }}
+        onError={(error) => {
+          setProcessingError(error);
+          setMode('resume-upload');
+        }}
+      />
+    );
+  }
+
   if (mode === 'voice') {
     return (
       <Suspense
         fallback={
           <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40">
             <div className="text-center space-y-4">
-              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-emerald-400 to-teal-400 animate-pulse"></div>
+              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-emerald-400 to-teal-400 animate-pulse" />
               <p className="text-gray-600">Preparing voice interview...</p>
             </div>
           </div>
@@ -399,66 +377,23 @@ export default function QuestionnairePage() {
         <VoiceInterview
           basicsAnswers={answers}
           resumeContext={resumeContext}
+          interviewBriefing={interviewBriefing}
           onComplete={handleVoiceComplete}
         />
       </Suspense>
     );
   }
 
-  // Generating profile state
-  if (mode === 'generating') {
-    return (
-      <div className="min-h-screen w-full bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40 flex items-center justify-center">
-        <div className="text-center space-y-12">
-          {/* Pulsing AI Orb */}
-          <div className="relative flex items-center justify-center">
-            {/* Outer glow - large pulse */}
-            <div className="absolute w-48 h-48 rounded-full bg-gradient-to-br from-emerald-200/40 to-teal-200/40 blur-3xl animate-pulse"></div>
-
-            {/* Middle glow */}
-            <div className="absolute w-32 h-32 rounded-full bg-gradient-to-br from-emerald-300/50 to-teal-300/50 blur-2xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
-
-            {/* Core orb with shimmer */}
-            <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-teal-400 shadow-2xl shadow-emerald-500/50 animate-pulse" style={{ animationDelay: '0.25s' }}></div>
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-2xl font-serif font-semibold text-gray-800">
-              Crafting your profile...
-            </h2>
-            <p className="text-lg text-gray-600">
-              Our AI is analyzing your responses and creating something special
-            </p>
-            <p className="text-sm text-gray-500">
-              This usually takes 5-10 seconds
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // BASICS phase - keyboard input
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40 flex flex-col">
-      {/* Admin button - demo only */}
-      <a
-        href="/admin"
-        className="fixed top-4 right-4 px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors z-50"
-      >
-        admin
-      </a>
-
-      {/* Progress indicator */}
       <div className="w-full pt-8">
         <ProgressIndicator
-          currentStep={0} // BASICS is always step 0
+          currentStep={0}
           totalSteps={5}
           steps={getPhaseSteps()}
         />
       </div>
 
-      {/* Main question area */}
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <QuestionWrapper
           question={currentQuestion.question}
@@ -494,26 +429,156 @@ export default function QuestionnairePage() {
         </QuestionWrapper>
       </div>
 
-      {/* Footer progress text */}
-      <div className="w-full pb-8 text-center space-y-3">
+      <div className="w-full pb-8 text-center">
         <p className="text-sm text-gray-500">
-          Question {currentIndex + 1} of {visibleBasicsQuestions.length} · {progress}% complete
+          Question {currentIndex + 1} of {visibleBasicsQuestions.length} &middot; {progress}% complete
         </p>
-        {demoAnswers[currentQuestion.id] && (
-          <button
-            onClick={handleAutofill}
-            className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-colors"
-          >
-            Fill demo answer
-          </button>
-        )}
+      </div>
+    </div>
+  );
+}
 
-        {/* Voice interview preview hint */}
-        {currentIndex === visibleBasicsQuestions.length - 1 && (
-          <p className="text-xs text-msu-green-light mt-4">
-            Next: Voice interview for deeper questions
-          </p>
-        )}
+
+interface PipelineLoadingScreenProps {
+  resumeFile: File;
+  tenantId: string;
+  positionId: string;
+  linkedinUrl: string;
+  onComplete: (data: Record<string, unknown>) => void;
+  onError: (error: string) => void;
+}
+
+function PipelineLoadingScreen({
+  resumeFile,
+  tenantId,
+  positionId,
+  linkedinUrl,
+  onComplete,
+  onError,
+}: PipelineLoadingScreenProps) {
+  const [activeStep, setActiveStep] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const [done, setDone] = useState(false);
+  const called = useRef(false);
+
+  const handleComplete = useCallback(onComplete, [onComplete]);
+  const handleError = useCallback(onError, [onError]);
+
+  useEffect(() => {
+    if (called.current) return;
+    called.current = true;
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    for (let i = 1; i < PIPELINE_STEPS.length; i++) {
+      timers.push(
+        setTimeout(() => {
+          setCompletedSteps(prev => [...prev, i - 1]);
+          setActiveStep(i);
+        }, i * STEP_INTERVAL_MS)
+      );
+    }
+
+    const formData = new FormData();
+    formData.append('file', resumeFile);
+    formData.append('tenant_id', tenantId);
+    formData.append('position_id', positionId);
+    if (linkedinUrl.trim()) {
+      formData.append('linkedin_url', linkedinUrl.trim());
+    }
+
+    fetch('/api/backend/process-resume', {
+      method: 'POST',
+      body: formData,
+    })
+      .then(res => res.json())
+      .then(data => {
+        timers.forEach(clearTimeout);
+
+        const allIdxs = PIPELINE_STEPS.map((_, i) => i);
+        setCompletedSteps(allIdxs);
+        setActiveStep(PIPELINE_STEPS.length);
+        setDone(true);
+
+        setTimeout(() => {
+          if (data.success) {
+            handleComplete(data);
+          } else {
+            handleError(data.error || 'Pipeline failed');
+          }
+        }, 800);
+      })
+      .catch(() => {
+        timers.forEach(clearTimeout);
+        handleError('Failed to connect to server. Please try again.');
+      });
+
+    return () => timers.forEach(clearTimeout);
+  }, [resumeFile, tenantId, positionId, linkedinUrl, handleComplete, handleError]);
+
+  return (
+    <div className="min-h-screen w-full bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40 flex flex-col">
+      <div className="w-full pt-8">
+        <ProgressIndicator
+          currentStep={2}
+          totalSteps={5}
+          steps={getPhaseSteps()}
+        />
+      </div>
+
+      <div className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="max-w-md w-full space-y-12">
+          <div className="relative flex items-center justify-center">
+            <div className="absolute w-48 h-48 rounded-full bg-gradient-to-br from-emerald-200/40 to-teal-200/40 blur-3xl animate-pulse" />
+            <div className="absolute w-32 h-32 rounded-full bg-gradient-to-br from-emerald-300/50 to-teal-300/50 blur-2xl animate-pulse" style={{ animationDelay: '0.5s' }} />
+            <div className={`relative w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-teal-400 shadow-2xl shadow-emerald-500/50 ${done ? '' : 'animate-pulse'}`} style={{ animationDelay: '0.25s' }} />
+          </div>
+
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-serif font-semibold text-gray-800">
+              {done ? 'Ready!' : 'Preparing your interview...'}
+            </h2>
+            <p className="text-sm text-gray-500">
+              {done ? 'Moving to the next step' : 'This usually takes about 45 seconds'}
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {PIPELINE_STEPS.map((label, idx) => {
+              const isCompleted = completedSteps.includes(idx);
+              const isActive = activeStep === idx && !isCompleted;
+
+              return (
+                <div key={idx} className="flex items-center gap-4">
+                  <div className={`
+                    w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-500
+                    ${isCompleted
+                      ? 'bg-msu-green text-white'
+                      : isActive
+                        ? 'bg-msu-green/20 border-2 border-msu-green'
+                        : 'bg-gray-100 border-2 border-gray-200'
+                    }
+                  `}>
+                    {isCompleted ? (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : isActive ? (
+                      <div className="w-3 h-3 rounded-full bg-msu-green animate-pulse" />
+                    ) : (
+                      <span className="text-xs text-gray-400 font-medium">{idx + 1}</span>
+                    )}
+                  </div>
+                  <span className={`text-lg transition-colors duration-300 ${
+                    isCompleted ? 'text-gray-800 font-medium' : isActive ? 'text-gray-700' : 'text-gray-400'
+                  }`}>
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

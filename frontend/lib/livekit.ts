@@ -41,16 +41,23 @@ export interface AllQuestionsResponse {
 /**
  * Get a LiveKit access token from the backend
  */
-export async function getToken(roomName: string, participantName: string): Promise<TokenResponse> {
+export async function getToken(
+  roomName: string,
+  participantName: string,
+  interviewBriefing?: Record<string, unknown> | null,
+): Promise<TokenResponse> {
+  const body: Record<string, unknown> = {
+    room_name: roomName,
+    participant_name: participantName,
+  };
+  if (interviewBriefing) {
+    body.interview_briefing = interviewBriefing;
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/backend/token`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      room_name: roomName,
-      participant_name: participantName,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

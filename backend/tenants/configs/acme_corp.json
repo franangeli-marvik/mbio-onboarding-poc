@@ -1,0 +1,25 @@
+{
+  "tenant_id": "acme_corp",
+  "company_name": "Acme Corporation",
+  "tone": "direct",
+  "positions": [
+    {
+      "id": "senior_ml_engineer",
+      "title": "Senior ML Engineer",
+      "focus_area": "ML systems design, model deployment, MLOps",
+      "custom_instructions": "Focus on quantifiable achievements. Probe for system design decisions and trade-offs. Ask about scale (data volume, QPS, team size). Prioritize concrete examples over general statements."
+    },
+    {
+      "id": "sales_enablement",
+      "title": "Sales Enablement Manager",
+      "focus_area": "Sales strategy, team enablement, revenue operations",
+      "custom_instructions": "Focus on revenue impact and team growth metrics. Explore leadership style and change management experience. Ask for specific numbers on deals closed, team size managed, and quota attainment."
+    },
+    {
+      "id": "data_analyst",
+      "title": "Data Analyst",
+      "focus_area": "Data analysis, business intelligence, stakeholder communication",
+      "custom_instructions": "Focus on end-to-end analysis examples. Ask about the business question, the approach, the tools used, and the outcome. Probe for cases where analysis changed a business decision."
+    }
+  ]
+}

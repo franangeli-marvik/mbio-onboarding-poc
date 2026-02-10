@@ -1,0 +1,13 @@
+{
+  "tenant_id": "default",
+  "company_name": "M.bio",
+  "tone": "supportive",
+  "positions": [
+    {
+      "id": "general",
+      "title": "General Professional",
+      "focus_area": "General Professional Development",
+      "custom_instructions": null
+    }
+  ]
+}

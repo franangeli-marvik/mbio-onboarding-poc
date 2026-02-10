@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { Persona, PersonaState } from '@/components/ai-elements/persona';
 import ProgressIndicator from '@/components/questionnaire/progress-indicator';
 import { Room, RoomEvent, ConnectionState, Track, RemoteTrack, RemoteParticipant, LocalParticipant, TranscriptionSegment } from 'livekit-client';
@@ -10,17 +9,13 @@ import { getToken } from '@/lib/livekit';
 interface VoiceInterviewProps {
   basicsAnswers: Record<string, string>;
   resumeContext?: Record<string, unknown> | null;
+  interviewBriefing?: Record<string, unknown> | null;
   onComplete: (voiceAnswers: Record<string, string>, transcript: Array<{ role: string; text: string }>) => void;
 }
 
-type Phase = 'school' | 'life' | 'skills' | 'impact';
-const PHASES: Phase[] = ['school', 'life', 'skills', 'impact'];
-const PHASE_LABELS = ['SCHOOL', 'LIFE', 'SKILLS', 'IMPACT'];
-
 type VoiceState = 'connecting' | 'listening' | 'thinking' | 'speaking' | 'idle' | 'error';
 
-export default function VoiceInterview({ basicsAnswers, resumeContext, onComplete }: VoiceInterviewProps) {
-  const router = useRouter();
+export default function VoiceInterview({ basicsAnswers, resumeContext, interviewBriefing, onComplete }: VoiceInterviewProps) {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [isConnected, setIsConnected] = useState(false);
   const [agentText, setAgentText] = useState('');
@@ -28,7 +23,6 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, onComplet
   const [transcript, setTranscript] = useState<Array<{ role: string; text: string; timestamp: string }>>([]);
   const [showIntro, setShowIntro] = useState(true);
   const [noteText, setNoteText] = useState('');
-  const [currentPhase, setCurrentPhase] = useState(0);
   const [error, setError] = useState<string | null>(null);
   
   const roomRef = useRef<Room | null>(null);
@@ -65,9 +59,7 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, onComplet
       setError(null);
 
       const roomName = generateRoomName();
-      
-      // Get token from backend
-      const { token, url } = await getToken(roomName, participantName);
+      const { token, url } = await getToken(roomName, participantName, interviewBriefing);
 
       // Create room
       const room = new Room({
@@ -138,16 +130,6 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, onComplet
                 text,
                 timestamp: new Date().toISOString()
               }]);
-              
-              // Detect phase from agent's speech
-              const textLower = text.toLowerCase();
-              if (textLower.includes('impact') || textLower.includes('legacy') || textLower.includes('difference')) {
-                setCurrentPhase(3); // IMPACT
-              } else if (textLower.includes('skill') || textLower.includes('technical') || textLower.includes('programming')) {
-                setCurrentPhase(2); // SKILLS
-              } else if (textLower.includes('achievement') || textLower.includes('proud') || textLower.includes('interest') || textLower.includes('hobby')) {
-                setCurrentPhase(1); // LIFE
-              }
             }
           } else {
             setUserText(text);
@@ -168,15 +150,6 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, onComplet
         try {
           const data = JSON.parse(new TextDecoder().decode(payload));
           console.log('Data received:', data);
-          
-          // Handle phase updates from agent
-          if (data.phase) {
-            const phaseIndex = PHASES.indexOf(data.phase as Phase);
-            if (phaseIndex !== -1) {
-              console.log('Phase changed to:', data.phase, 'index:', phaseIndex);
-              setCurrentPhase(phaseIndex);
-            }
-          }
           
           // Handle manual transcripts (fallback)
           if (data.type === 'transcript') {
@@ -218,7 +191,7 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, onComplet
       setError(error instanceof Error ? error.message : 'Failed to connect');
       setVoiceState('error');
     }
-  }, [participantName]);
+  }, [participantName, interviewBriefing]);
 
   // Disconnect from room
   const disconnect = useCallback(async () => {
@@ -367,9 +340,9 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, onComplet
       {/* Progress indicator */}
       <div className="w-full pt-8">
         <ProgressIndicator
-          currentStep={currentPhase + 1}
+          currentStep={3}
           totalSteps={5}
-          steps={['BASICS', ...PHASE_LABELS]}
+          steps={['BASICS', 'POSITION', 'RESUME', 'INTERVIEW', 'REVIEW']}
         />
       </div>
 

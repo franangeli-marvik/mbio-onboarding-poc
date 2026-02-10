@@ -29,9 +29,6 @@ export default function Home() {
           </Link>
         </div>
 
-        <p className="text-sm text-gray-500">
-          Built for MSU students to showcase the whole person
-        </p>
       </div>
     </div>
   );

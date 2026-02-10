@@ -36,18 +36,6 @@ export const questions: Question[] = [
     placeholder: "e.g., Chicago, IL",
   },
   {
-    id: "lifeStage",
-    phase: "foundation",
-    phaseLabel: "BASICS",
-    question: "Which best describes your current stage?",
-    subtext: "This helps us tailor your profile.",
-    type: "select",
-    options: [
-      { value: "student", label: "Student" },
-      { value: "professional", label: "Professional" },
-    ],
-  },
-  {
     id: "primaryGoal",
     phase: "foundation",
     phaseLabel: "BASICS",
@@ -244,5 +232,5 @@ export function getVisibleQuestions(
 }
 
 export function getPhaseSteps(): string[] {
-  return ["BASICS", "SCHOOL", "LIFE", "SKILLS", "IMPACT"];
+  return ["BASICS", "POSITION", "RESUME", "INTERVIEW", "REVIEW"];
 }

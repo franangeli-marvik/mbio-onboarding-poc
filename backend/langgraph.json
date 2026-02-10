@@ -1,0 +1,9 @@
+{
+  "$schema": "https://langchain-ai.github.io/langgraph/schemas/langgraph.json",
+  "graphs": {
+    "interview_prep": "interview_prep.pipeline:graph"
+  },
+  "env": "../.env",
+  "python_version": "3.12",
+  "dependencies": ["./requirements.txt"]
+}
