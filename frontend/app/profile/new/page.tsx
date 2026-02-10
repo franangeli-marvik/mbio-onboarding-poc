@@ -36,6 +36,18 @@ const PIPELINE_STEPS = [
 const STEP_INTERVAL_MS = 10_000;
 
 export default function QuestionnairePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40">
+        <p className="text-gray-600">Loading...</p>
+      </div>
+    }>
+      <QuestionnaireContent />
+    </Suspense>
+  );
+}
+
+function QuestionnaireContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tenantId = searchParams.get('tenant') || 'default';
