@@ -142,6 +142,7 @@ class TokenRequest(BaseModel):
     participant_name: str
     participant_identity: str | None = None
     interview_briefing: dict | None = None
+    interview_plan: dict | None = None
 
 
 class TokenResponse(BaseModel):
@@ -228,10 +229,13 @@ async def generate_token(request: TokenRequest):
                 "created_at": datetime.now().isoformat(),
             }
             has_briefing = request.interview_briefing is not None
+            has_plan = request.interview_plan is not None
             if request.interview_briefing:
                 room_metadata["interview_briefing"] = request.interview_briefing
+            if request.interview_plan:
+                room_metadata["interview_plan"] = request.interview_plan
             metadata_json = json.dumps(room_metadata)
-            print(f"[TOKEN] Creating room {request.room_name} | briefing={has_briefing} | metadata_size={len(metadata_json)}")
+            print(f"[TOKEN] Creating room {request.room_name} | briefing={has_briefing} | plan={has_plan} | metadata_size={len(metadata_json)}")
             await lk_api.room.create_room(
                 api.CreateRoomRequest(
                     name=request.room_name,

@@ -10,12 +10,13 @@ interface VoiceInterviewProps {
   basicsAnswers: Record<string, string>;
   resumeContext?: Record<string, unknown> | null;
   interviewBriefing?: Record<string, unknown> | null;
+  interviewPlan?: Record<string, unknown> | null;
   onComplete: (voiceAnswers: Record<string, string>, transcript: Array<{ role: string; text: string }>) => void;
 }
 
 type VoiceState = 'connecting' | 'listening' | 'thinking' | 'speaking' | 'idle' | 'completing' | 'error';
 
-export default function VoiceInterview({ basicsAnswers, resumeContext, interviewBriefing, onComplete }: VoiceInterviewProps) {
+export default function VoiceInterview({ basicsAnswers, resumeContext, interviewBriefing, interviewPlan, onComplete }: VoiceInterviewProps) {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [isConnected, setIsConnected] = useState(false);
   const [agentText, setAgentText] = useState('');
@@ -70,7 +71,7 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
       setError(null);
 
       const roomName = generateRoomName();
-      const { token, url } = await getToken(roomName, participantName, interviewBriefing);
+      const { token, url } = await getToken(roomName, participantName, interviewBriefing, interviewPlan);
 
       // Create room
       const room = new Room({
@@ -230,7 +231,7 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
       setError(error instanceof Error ? error.message : 'Failed to connect');
       setVoiceState('error');
     }
-  }, [participantName, interviewBriefing]);
+  }, [participantName, interviewBriefing, interviewPlan]);
 
   // Disconnect from room
   const disconnect = useCallback(async () => {

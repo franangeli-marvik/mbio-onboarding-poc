@@ -1,3 +1,11 @@
+"""
+Multi-agent voice interview entrypoint.
+
+Each interview phase (warmup, deep_dive, gaps, closing) is a separate LiveKit Agent
+with a short, focused prompt. Agents hand off to each other via function tools.
+This follows the LiveKit restaurant_agent.py pattern for reliable instruction following.
+"""
+
 import base64
 import json
 import logging
@@ -5,17 +13,20 @@ import os
 import shutil
 import time
 import asyncio
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 from livekit import agents, rtc
-from livekit.agents import AgentSession, Agent, WorkerOptions, cli, llm
+from livekit.agents import WorkerOptions, cli
+from livekit.agents.llm import function_tool
+from livekit.agents.voice import Agent, AgentSession, RunContext
 from livekit.agents.metrics import UsageCollector
 from livekit.plugins.openai import realtime as openai_realtime
 from livekit.plugins.google import realtime as google_realtime
 
-from agent.prompts import AGENT_INSTRUCTION, EXTRACTION_PROMPT
+from agent.prompts import AGENT_INSTRUCTION, EXTRACTION_PROMPT, build_phase_instructions
 from core.config import MODEL_PROVIDER, GCP_PROJECT, GCP_LOCATION, DATA_DIR
 from core.clients import get_openai_client
 
@@ -29,6 +40,9 @@ logging.getLogger("opentelemetry.exporter.otlp.proto.http.trace_exporter").setLe
 )
 
 
+# ---------------------------------------------------------------------------
+# Langfuse OTEL tracing setup
+# ---------------------------------------------------------------------------
 def setup_langfuse():
     public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
     secret_key = os.getenv("LANGFUSE_SECRET_KEY")
@@ -52,10 +66,14 @@ def setup_langfuse():
     except Exception as e:
         print(f"[AGENT] Failed to setup Langfuse tracing: {e}")
 
+
 OUTPUT_DIR = Path(DATA_DIR)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
+# ---------------------------------------------------------------------------
+# Model factory
+# ---------------------------------------------------------------------------
 def get_realtime_model():
     if MODEL_PROVIDER == "gemini":
         return google_realtime.RealtimeModel(
@@ -73,40 +91,14 @@ def get_realtime_model():
     )
 
 
+# ---------------------------------------------------------------------------
+# Utilities (kept from original)
+# ---------------------------------------------------------------------------
 def format_duration(seconds: float) -> str:
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-
-
-PHASE_KEYWORDS = {
-    "school": [
-        "education", "school", "university", "college", "degree",
-        "major", "study", "studying", "academic", "student",
-    ],
-    "life": [
-        "achievement", "accomplishment", "proud", "interests", "hobby",
-        "hobbies", "outside work", "free time", "experience",
-    ],
-    "skills": [
-        "skills", "technical", "abilities", "expertise", "proficient",
-        "programming", "tools", "capabilities",
-    ],
-    "impact": [
-        "impact", "legacy", "change", "contribute", "future",
-        "goals", "aspiration", "make a difference", "world",
-    ],
-}
-
-
-def detect_phase_from_text(text: str) -> str:
-    text_lower = text.lower()
-    for phase in ["impact", "skills", "life", "school"]:
-        for keyword in PHASE_KEYWORDS[phase]:
-            if keyword in text_lower:
-                return phase
-    return "school"
 
 
 async def send_to_frontend(room, data: dict):
@@ -170,102 +162,170 @@ def extract_profile(transcript: list) -> dict:
         return {}
 
 
-def build_agent_instructions(briefing: dict | None) -> str:
-    if not briefing:
-        return AGENT_INSTRUCTION
-
-    candidate_context = briefing.get("candidate_context", "")
-    guidelines = briefing.get("conversation_guidelines", "")
-    if isinstance(guidelines, dict):
-        guidelines = "\n".join(f"- {k}: {v}" for k, v in guidelines.items())
-    questions_script = briefing.get("questions_script", [])
-    topics_to_avoid = briefing.get("topics_to_avoid", [])
-    personalization_hints = briefing.get("personalization_hints", [])
-
-    questions_block = ""
-    for i, q in enumerate(questions_script, 1):
-        question = q.get("question", "") if isinstance(q, dict) else str(q)
-        notes = q.get("notes", "") if isinstance(q, dict) else ""
-        questions_block += f"\n{i}. {question}"
-        if notes:
-            questions_block += f"\n   (Note: {notes})"
-
-    avoid_block = ""
-    if topics_to_avoid:
-        avoid_block = "\n- ".join(topics_to_avoid)
-
-    hints_block = ""
-    if personalization_hints:
-        hints_block = "\n- ".join(personalization_hints)
-
-    total_questions = len(questions_script)
-
-    return f"""# Role & Objective
-You are a professional interviewer helping candidates enhance their resume.
-Your goal is to cover exactly {total_questions} interview questions, gather detailed answers, and then end the session.
-
-# Personality & Tone
-## Tone
-- Warm, encouraging, and conversational
-- Concise — keep responses to 2-3 sentences per turn
-- Use the candidate's name occasionally to make it personal
-
-## Language
-- The conversation will be ONLY in English.
-- Do NOT respond in any other language even if the user speaks Spanish, Italian, French, or any other language.
-- If the user speaks another language, acknowledge in English and continue in English.
-
-# Context
-## Candidate Background
-{candidate_context}
-
-## Conversation Guidelines
-{guidelines}
-
-# Instructions
-- Ask ONE question at a time, then wait for the candidate's response
-- Acknowledge what they share before moving to the next topic
-- If they share something interesting, ask ONE brief follow-up
-- Do NOT repeat questions already answered
-{f"- TOPICS TO AVOID: {avoid_block}" if avoid_block else ""}
-{f"- PERSONALIZATION HINTS: {hints_block}" if hints_block else ""}
-
-# Conversation Flow
-## Questions ({total_questions} total) — ask IN ORDER:
-{questions_block}
-
-## Completion
-- After ALL {total_questions} questions are covered, thank the candidate warmly
-- Tell them their enhanced resume will be ready shortly
-- Say a brief goodbye in English
-- IMMEDIATELY call end_interview() — do NOT wait for the candidate to respond
-
-## Early Exit
-- If the candidate says goodbye in ANY language (bye, chau, adios, ciao, see you, etc.) or wants to leave:
-  1. Say a brief warm farewell in English
-  2. IMMEDIATELY call end_interview()
-- Do NOT continue asking questions after the candidate wants to leave
-
-# Tools
-- end_interview(): Call this IMMEDIATELY after your farewell message. Do NOT skip this function call. This is CRITICAL.
-- Before calling end_interview(), always say a short farewell like "Thank you for your time. Your enhanced resume will be ready shortly!"
-"""
+# ---------------------------------------------------------------------------
+# Shared interview state (passed via session.userdata)
+# ---------------------------------------------------------------------------
+@dataclass
+class InterviewUserData:
+    candidate_name: str = ""
+    candidate_context: str = ""
+    guidelines: str = ""
+    topics_to_avoid: list[str] = field(default_factory=list)
+    personalization_hints: list[str] = field(default_factory=list)
+    phases: list[dict] = field(default_factory=list)
+    current_phase_idx: int = 0
+    transcript: list[dict] = field(default_factory=list)
+    agents: dict[str, Agent] = field(default_factory=dict)
+    prev_agent: Agent | None = None
+    phase_names: list[str] = field(default_factory=list)
 
 
-class Assistant(Agent):
+# ---------------------------------------------------------------------------
+# Base agent class (following LiveKit restaurant_agent pattern)
+# ---------------------------------------------------------------------------
+class BaseInterviewAgent(Agent):
+    """Base class for all interview phase agents."""
+
+    async def on_enter(self) -> None:
+        """Called when this agent becomes active. Inherits conversation history."""
+        agent_name = self.__class__.__name__
+        print(f"[AGENT] Entering phase: {agent_name}")
+
+        userdata: InterviewUserData = self.session.userdata
+        chat_ctx = self.chat_ctx.copy()
+
+        # Add previous agent's conversation history for context continuity
+        if isinstance(userdata.prev_agent, Agent):
+            truncated_chat_ctx = userdata.prev_agent.chat_ctx.copy(
+                exclude_instructions=True,
+                exclude_function_call=False,
+                exclude_handoff=True,
+                exclude_config_update=True,
+            ).truncate(max_items=8)
+            existing_ids = {item.id for item in chat_ctx.items}
+            items_copy = [
+                item for item in truncated_chat_ctx.items if item.id not in existing_ids
+            ]
+            chat_ctx.items.extend(items_copy)
+
+        await self.update_chat_ctx(chat_ctx)
+        # Let the agent generate a natural transition (tool_choice="none" prevents
+        # it from immediately calling a tool)
+        self.session.generate_reply(tool_choice="none")
+
+    async def _transfer_to_next(self, context: RunContext) -> tuple[Agent, str]:
+        """Transfer to the next phase agent."""
+        userdata: InterviewUserData = context.userdata
+        userdata.prev_agent = context.session.current_agent
+        userdata.current_phase_idx += 1
+
+        next_idx = userdata.current_phase_idx
+        if next_idx < len(userdata.phase_names):
+            next_name = userdata.phase_names[next_idx]
+            next_agent = userdata.agents.get(next_name)
+            if next_agent:
+                print(f"[AGENT] Handoff: {self.__class__.__name__} -> {next_name}")
+                return next_agent, f"Moving to {next_name} phase"
+
+        # No more phases — end the interview
+        print(f"[AGENT] No more phases, ending interview")
+        await self.session.drain()
+        await self.session.aclose()
+        return self, "Interview complete"
+
+
+# ---------------------------------------------------------------------------
+# Phase agent factory
+# ---------------------------------------------------------------------------
+def create_phase_agent(
+    phase_name: str,
+    phase_goal: str,
+    questions: list[dict],
+    candidate_context: str,
+    is_last_phase: bool,
+    topics_to_avoid: list[str] | None = None,
+    personalization_hints: list[str] | None = None,
+) -> Agent:
+    """Dynamically create a phase agent with the right instructions and tools."""
+    instructions = build_phase_instructions(
+        phase_name=phase_name,
+        phase_goal=phase_goal,
+        questions=questions,
+        candidate_context=candidate_context,
+        is_last_phase=is_last_phase,
+        topics_to_avoid=topics_to_avoid,
+        personalization_hints=personalization_hints,
+    )
+
+    print(f"[AGENT] Creating {phase_name} agent | questions={len(questions)} | "
+          f"instructions_len={len(instructions)} | is_last={is_last_phase}")
+
+    if is_last_phase:
+        # Closing agent: has end_interview instead of move_to_next_phase
+        class ClosingPhaseAgent(BaseInterviewAgent):
+            def __init__(self):
+                super().__init__(instructions=instructions)
+
+            @function_tool()
+            async def end_interview(self, context: RunContext):
+                """End the interview session. Call this after your farewell message."""
+                print(f"[AGENT] end_interview() called in closing phase")
+                await self.session.drain()
+                await self.session.aclose()
+
+            @function_tool()
+            async def early_exit(self, context: RunContext):
+                """Use if the candidate wants to leave early."""
+                print(f"[AGENT] early_exit() called")
+                await self.session.drain()
+                await self.session.aclose()
+
+        return ClosingPhaseAgent()
+    else:
+        # Non-closing agent: has move_to_next_phase
+        class InterviewPhaseAgent(BaseInterviewAgent):
+            def __init__(self):
+                super().__init__(instructions=instructions)
+
+            @function_tool()
+            async def move_to_next_phase(self, context: RunContext) -> tuple[Agent, str]:
+                """Call when you've covered all questions in this phase."""
+                print(f"[AGENT] move_to_next_phase() called from {phase_name}")
+                return await self._transfer_to_next(context)
+
+            @function_tool()
+            async def end_interview(self, context: RunContext):
+                """Use if the candidate wants to leave early."""
+                print(f"[AGENT] end_interview() (early exit) from {phase_name}")
+                await self.session.drain()
+                await self.session.aclose()
+
+        return InterviewPhaseAgent()
+
+
+# ---------------------------------------------------------------------------
+# Fallback: single agent when no pipeline plan is available
+# ---------------------------------------------------------------------------
+class FallbackAssistant(Agent):
     def __init__(self, instructions: str | None = None) -> None:
         super().__init__(instructions=instructions or AGENT_INSTRUCTION)
 
-    @llm.function_tool
-    async def end_interview(self):
+    @function_tool()
+    async def end_interview(self, context: RunContext):
         """End the interview session. Call this after your farewell message."""
         await self.session.drain()
         await self.session.aclose()
 
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 INACTIVITY_TIMEOUT = 300
 
 
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
 async def entrypoint(ctx: agents.JobContext):
     setup_langfuse()
     await ctx.connect()
@@ -284,14 +344,116 @@ async def entrypoint(ctx: agents.JobContext):
     transcript_history: list[dict] = []
     session_closed = False
 
-    model = get_realtime_model()
-    session = AgentSession(llm=model)
-
     last_user_speech_end: list[float | None] = [None]
     last_activity_time = [time.time()]
     latency_measurements: list[float] = []
-    current_phase = ["school"]
 
+    # ------------------------------------------------------------------
+    # Parse room metadata
+    # ------------------------------------------------------------------
+    briefing = None
+    plan = None
+    print(f"[AGENT] Room metadata raw: {ctx.room.metadata[:500] if ctx.room.metadata else 'EMPTY'}")
+    try:
+        if ctx.room.metadata:
+            room_meta = json.loads(ctx.room.metadata)
+            briefing = room_meta.get("interview_briefing")
+            plan = room_meta.get("interview_plan")
+            print(
+                f"[AGENT] Briefing found: {briefing is not None}, "
+                f"questions: {len(briefing.get('questions_script', [])) if briefing else 0}"
+            )
+            print(
+                f"[AGENT] Plan found: {plan is not None}, "
+                f"phases: {len(plan.get('phases', [])) if plan else 0}"
+            )
+        else:
+            print("[AGENT] WARNING: No room metadata available")
+    except Exception as e:
+        print(f"[AGENT] ERROR parsing metadata: {e}")
+
+    # ------------------------------------------------------------------
+    # Resolve user name
+    # ------------------------------------------------------------------
+    user_name = "there"
+    if briefing:
+        # Try to get from metadata participant_name
+        try:
+            room_meta = json.loads(ctx.room.metadata)
+            user_name = room_meta.get("participant_name", "there").split()[0]
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Build agents
+    # ------------------------------------------------------------------
+    use_multi_agent = plan is not None and len(plan.get("phases", [])) > 0
+    model = get_realtime_model()
+
+    if use_multi_agent:
+        # ---- MULTI-AGENT PATH ----
+        candidate_context = briefing.get("candidate_context", "") if briefing else ""
+        topics_to_avoid = briefing.get("topics_to_avoid", []) if briefing else []
+        personalization_hints = briefing.get("personalization_hints", []) if briefing else []
+
+        phases = plan["phases"]
+        phase_names = []
+        agents_dict: dict[str, Agent] = {}
+
+        for i, phase in enumerate(phases):
+            phase_name = phase.get("phase_name", f"phase_{i}")
+            phase_goal = phase.get("phase_goal", "")
+            phase_questions = phase.get("questions", [])
+            is_last = i == len(phases) - 1
+
+            # Normalize phase name for dict key
+            key = phase_name.lower().replace(" ", "_")
+            phase_names.append(key)
+
+            agent = create_phase_agent(
+                phase_name=phase_name,
+                phase_goal=phase_goal,
+                questions=phase_questions,
+                candidate_context=candidate_context,
+                is_last_phase=is_last,
+                topics_to_avoid=topics_to_avoid,
+                personalization_hints=personalization_hints,
+            )
+            agents_dict[key] = agent
+
+        userdata = InterviewUserData(
+            candidate_name=user_name,
+            candidate_context=candidate_context,
+            topics_to_avoid=topics_to_avoid,
+            personalization_hints=personalization_hints,
+            phases=[p for p in phases],
+            phase_names=phase_names,
+            agents=agents_dict,
+        )
+
+        first_agent = agents_dict[phase_names[0]]
+        print(
+            f"[AGENT] Multi-agent mode: {len(phase_names)} phases "
+            f"({', '.join(phase_names)}), starting with {phase_names[0]}"
+        )
+
+        session = AgentSession[InterviewUserData](
+            llm=model,
+            userdata=userdata,
+        )
+    else:
+        # ---- FALLBACK: SINGLE AGENT ----
+        print("[AGENT] Fallback mode: using single agent (no plan available)")
+        first_agent = FallbackAssistant()
+        userdata = InterviewUserData(candidate_name=user_name)
+        session = AgentSession[InterviewUserData](
+            llm=model,
+            userdata=userdata,
+        )
+
+    # ------------------------------------------------------------------
+    # Event handlers (shared for both paths)
+    # ------------------------------------------------------------------
     async def check_inactivity():
         while not session_closed:
             await asyncio.sleep(30)
@@ -299,6 +461,7 @@ async def entrypoint(ctx: agents.JobContext):
                 break
             elapsed = time.time() - last_activity_time[0]
             if elapsed > INACTIVITY_TIMEOUT:
+                print("[AGENT] Inactivity timeout reached, closing session")
                 await session.drain()
                 await session.aclose()
                 break
@@ -340,7 +503,9 @@ async def entrypoint(ctx: agents.JobContext):
                 }
             )
             await session.generate_reply(
-                instructions=f"The user just typed this note: '{note_text}'. Acknowledge it briefly and incorporate this information. If it's a URL or link, confirm you've noted it."
+                instructions=f"The user just typed this note: '{note_text}'. "
+                "Acknowledge it briefly and incorporate this information. "
+                "If it's a URL or link, confirm you've noted it."
             )
         except Exception:
             pass
@@ -355,10 +520,6 @@ async def entrypoint(ctx: agents.JobContext):
     @session.on("agent_speech_committed")
     def on_agent_speech(event):
         if hasattr(event, "content") and event.content:
-            detected_phase = detect_phase_from_text(event.content)
-            if detected_phase != current_phase[0]:
-                current_phase[0] = detected_phase
-
             transcript_history.append(
                 {"role": "agent", "text": event.content, "timestamp": time.time()}
             )
@@ -370,7 +531,6 @@ async def entrypoint(ctx: agents.JobContext):
                         "role": "agent",
                         "text": event.content,
                         "is_final": True,
-                        "phase": current_phase[0],
                         "timestamp": time.time(),
                     },
                 )
@@ -407,6 +567,8 @@ async def entrypoint(ctx: agents.JobContext):
             "room_name": room_name,
             "timestamp": datetime.now().isoformat(),
             "model_provider": MODEL_PROVIDER,
+            "multi_agent": use_multi_agent,
+            "phases": [p.get("phase_name") for p in plan.get("phases", [])] if plan else [],
             "close_reason": event.reason.value if event.reason else "unknown",
             "duration": {
                 "seconds": round(duration_seconds, 2),
@@ -433,23 +595,12 @@ async def entrypoint(ctx: agents.JobContext):
 
         os._exit(0)
 
-    briefing = None
-    print(f"[AGENT] Room metadata raw: {ctx.room.metadata[:500] if ctx.room.metadata else 'EMPTY'}")
-    try:
-        if ctx.room.metadata:
-            room_meta = json.loads(ctx.room.metadata)
-            briefing = room_meta.get("interview_briefing")
-            print(f"[AGENT] Briefing found: {briefing is not None}, questions: {len(briefing.get('questions_script', [])) if briefing else 0}")
-        else:
-            print("[AGENT] WARNING: No room metadata available")
-    except Exception as e:
-        print(f"[AGENT] ERROR parsing metadata: {e}")
+    # ------------------------------------------------------------------
+    # Start the session
+    # ------------------------------------------------------------------
+    await session.start(agent=first_agent, room=ctx.room, record=True)
 
-    agent_instructions = build_agent_instructions(briefing)
-    assistant = Assistant(instructions=agent_instructions)
-
-    await session.start(room=ctx.room, agent=assistant, record=True)
-
+    # Handle data channel messages (user notes)
     def on_data_received(data_packet: rtc.DataPacket):
         try:
             message = json.loads(data_packet.data.decode("utf-8"))
@@ -461,7 +612,9 @@ async def entrypoint(ctx: agents.JobContext):
 
     ctx.room.on("data_received", on_data_received)
 
-    user_name = "there"
+    # ------------------------------------------------------------------
+    # Resolve user name from participants (retry after 2s if needed)
+    # ------------------------------------------------------------------
     for participant in ctx.room.remote_participants.values():
         if participant.name:
             user_name = participant.name.split()[0]
@@ -474,25 +627,39 @@ async def entrypoint(ctx: agents.JobContext):
                 user_name = participant.name.split()[0]
                 break
 
-    first_question = ""
-    if briefing and briefing.get("questions_script"):
-        q = briefing["questions_script"][0]
-        first_question = q.get("question", "") if isinstance(q, dict) else str(q)
+    # Update userdata with resolved name
+    userdata.candidate_name = user_name
 
-    if first_question:
-        personalized_instruction = (
-            f"Say exactly this in English: "
-            f"\"Hi {user_name}, thanks for joining! {first_question}\" "
-            f"You MUST say this in English. Do NOT translate it."
+    # ------------------------------------------------------------------
+    # Initial greeting
+    # ------------------------------------------------------------------
+    if use_multi_agent:
+        # The on_enter of the first agent handles the greeting via generate_reply
+        # But we give it a nudge with the user's name
+        first_phase = plan["phases"][0] if plan and plan.get("phases") else None
+        first_q = ""
+        if first_phase and first_phase.get("questions"):
+            q = first_phase["questions"][0]
+            first_q = q.get("question", "") if isinstance(q, dict) else str(q)
+
+        greeting = (
+            f"Greet {user_name} warmly in English. "
+            f"Then ask: \"{first_q}\"" if first_q
+            else f"Greet {user_name} warmly in English and start with your first question."
         )
+        await session.generate_reply(instructions=greeting)
+        print(f"[AGENT] Initial greeting sent for {user_name}")
     else:
-        personalized_instruction = (
-            f"Say exactly this in English: "
-            f"\"Hi {user_name}, thanks for joining! What's your main career goal right now?\" "
-            f"You MUST say this in English. Do NOT translate it."
+        # Fallback greeting
+        await session.generate_reply(
+            instructions=(
+                f"Say exactly this in English: "
+                f"\"Hi {user_name}, thanks for joining! "
+                f"What's your main career goal right now?\" "
+                f"You MUST say this in English. Do NOT translate it."
+            )
         )
-
-    await session.generate_reply(instructions=personalized_instruction)
+        print(f"[AGENT] Fallback greeting sent for {user_name}")
 
 
 if __name__ == "__main__":

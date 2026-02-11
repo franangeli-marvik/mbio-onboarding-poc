@@ -65,6 +65,7 @@ function QuestionnaireContent() {
   const [processingError, setProcessingError] = useState<string | null>(null);
 
   const [interviewBriefing, setInterviewBriefing] = useState<Record<string, unknown> | null>(null);
+  const [interviewPlan, setInterviewPlan] = useState<Record<string, unknown> | null>(null);
   const [tenantData, setTenantData] = useState<TenantData | null>(null);
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
 
@@ -350,6 +351,7 @@ function QuestionnaireContent() {
             sessionStorage.setItem('profileAnalysis', JSON.stringify(data.profile_analysis));
           }
           if (data.interview_plan) {
+            setInterviewPlan(data.interview_plan as Record<string, unknown>);
             sessionStorage.setItem('interviewPlan', JSON.stringify(data.interview_plan));
           }
           setMode('voice');
@@ -378,6 +380,7 @@ function QuestionnaireContent() {
           basicsAnswers={answers}
           resumeContext={resumeContext}
           interviewBriefing={interviewBriefing}
+          interviewPlan={interviewPlan}
           onComplete={handleVoiceComplete}
         />
       </Suspense>

@@ -45,6 +45,7 @@ export async function getToken(
   roomName: string,
   participantName: string,
   interviewBriefing?: Record<string, unknown> | null,
+  interviewPlan?: Record<string, unknown> | null,
 ): Promise<TokenResponse> {
   const body: Record<string, unknown> = {
     room_name: roomName,
@@ -52,6 +53,9 @@ export async function getToken(
   };
   if (interviewBriefing) {
     body.interview_briefing = interviewBriefing;
+  }
+  if (interviewPlan) {
+    body.interview_plan = interviewPlan;
   }
 
   const response = await fetch(`${API_BASE_URL}/api/backend/token`, {
