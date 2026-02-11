@@ -2,8 +2,12 @@ import json
 from typing import Any
 
 from core.clients import get_gemini_client
+from agent.prompt_manager import get_langfuse_prompt
+from observability.tracing import traced_generation
 from interview_prep.schemas import InterviewPrepState, ProfileAnalysis
 from interview_prep.prompts import PROFILE_ANALYZER_SYSTEM, get_profile_analyzer_user
+
+MODEL = "gemini-2.0-flash"
 
 
 def profile_analyzer_node(state: InterviewPrepState) -> dict[str, Any]:
@@ -23,16 +27,35 @@ def profile_analyzer_node(state: InterviewPrepState) -> dict[str, Any]:
             resume_json=resume_json,
         ) + tenant_block
 
-        client = get_gemini_client()
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                {"role": "user", "parts": [{"text": PROFILE_ANALYZER_SYSTEM}]},
-                {"role": "model", "parts": [{"text": "I understand. I will analyze the resume and provide structured insights for the voice interview."}]},
-                {"role": "user", "parts": [{"text": user_prompt}]},
-            ],
-            config={"temperature": 0.3, "response_mime_type": "application/json"},
-        )
+        contents = [
+            {"role": "user", "parts": [{"text": PROFILE_ANALYZER_SYSTEM}]},
+            {"role": "model", "parts": [{"text": "I understand. I will analyze the resume and provide structured insights for the voice interview."}]},
+            {"role": "user", "parts": [{"text": user_prompt}]},
+        ]
+
+        lf_prompt = get_langfuse_prompt("pipeline/profile-analyzer-system")
+
+        with traced_generation(
+            "profile_analyzer",
+            model=MODEL,
+            prompt=lf_prompt,
+            input_data={"system": PROFILE_ANALYZER_SYSTEM, "user": user_prompt[:2000]},
+        ) as gen:
+            client = get_gemini_client()
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=contents,
+                config={"temperature": 0.3, "response_mime_type": "application/json"},
+            )
+
+            usage = getattr(response, "usage_metadata", None)
+            gen.update(
+                output=response.text,
+                usage_details={
+                    "input": getattr(usage, "prompt_token_count", 0),
+                    "output": getattr(usage, "candidates_token_count", 0),
+                } if usage else None,
+            )
 
         analysis = ProfileAnalysis(**json.loads(response.text))
 

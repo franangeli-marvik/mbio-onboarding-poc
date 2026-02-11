@@ -1,8 +1,34 @@
+from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps
 from typing import Any
 
 from core.clients import get_langfuse_client
+
+
+class _NullGeneration:
+    def update(self, **kwargs):
+        pass
+
+
+@contextmanager
+def traced_generation(name: str, *, model: str, prompt=None, input_data=None):
+    langfuse = get_langfuse_client()
+    if not langfuse:
+        yield _NullGeneration()
+        return
+
+    try:
+        with langfuse.start_as_current_observation(
+            as_type="generation",
+            name=name,
+            model=model,
+            prompt=prompt,
+            input=_safe_serialize(input_data),
+        ) as gen:
+            yield gen
+    except Exception:
+        yield _NullGeneration()
 
 
 class PipelineTrace:

@@ -1,5 +1,6 @@
 import logging
 from functools import lru_cache
+from typing import Any
 
 from core.clients import get_langfuse_client
 
@@ -28,6 +29,16 @@ def get_prompt(name: str, *, fallback: str, label: str = "production", **variabl
         if variables:
             return _compile_fallback(fallback, variables)
         return fallback
+
+
+def get_langfuse_prompt(name: str, *, label: str = "production") -> Any | None:
+    client = _langfuse()
+    if client is None:
+        return None
+    try:
+        return client.get_prompt(name, label=label, type="text")
+    except Exception:
+        return None
 
 
 def _compile_fallback(template: str, variables: dict) -> str:

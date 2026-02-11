@@ -1,6 +1,3 @@
-import time
-from typing import Optional
-
 from langgraph.graph import StateGraph, END
 
 from interview_prep.schemas import InterviewPrepState
@@ -120,49 +117,8 @@ async def run_interview_prep_pipeline(
 
         compiled = get_compiled_graph()
 
-        start_total = time.time()
         import asyncio
         final_state = await asyncio.to_thread(compiled.invoke, initial_state)
-        total_duration = (time.time() - start_total) * 1000
-
-        if final_state.get("profile_analysis"):
-            pa = final_state["profile_analysis"]
-            trace.log_node(
-                "profile_analyzer",
-                input_data={"resume_keys": list(resume_data.keys())},
-                output_data={
-                    "strengths": len(pa.get("strengths", [])),
-                    "gaps": len(pa.get("gaps", [])),
-                    "hooks": len(pa.get("interesting_hooks", [])),
-                },
-                duration_ms=total_duration / 3,
-            )
-
-        if final_state.get("interview_plan"):
-            ip = final_state["interview_plan"]
-            trace.log_node(
-                "question_planner",
-                input_data={"has_profile_analysis": True},
-                output_data={
-                    "phases": len(ip.get("phases", [])),
-                    "total_questions": sum(
-                        len(p.get("questions", [])) for p in ip.get("phases", [])
-                    ),
-                },
-                duration_ms=total_duration / 3,
-            )
-
-        if final_state.get("interview_briefing"):
-            ib = final_state["interview_briefing"]
-            trace.log_node(
-                "interview_briefer",
-                input_data={"has_interview_plan": True},
-                output_data={
-                    "questions": len(ib.get("questions_script", [])),
-                    "hints": len(ib.get("personalization_hints", [])),
-                },
-                duration_ms=total_duration / 3,
-            )
 
         trace_id = trace.session_id
 

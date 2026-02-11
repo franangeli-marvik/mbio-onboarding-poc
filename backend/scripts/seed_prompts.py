@@ -358,6 +358,57 @@ PROMPTS: list[dict] = [
 ]
 
 
+MODEL_DEFINITIONS: list[dict] = [
+    {
+        "modelName": "gemini-2.0-flash",
+        "matchPattern": "(?i)gemini-2\\.0-flash",
+        "unit": "TOKENS",
+        "inputPrice": 0.0000001,
+        "outputPrice": 0.0000004,
+        "totalPrice": None,
+        "tokenizerId": None,
+    },
+]
+
+
+def _seed_model_definitions(client):
+    import base64
+    import json as _json
+    import urllib.request
+    import urllib.error
+
+    host = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
+    public_key = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    secret_key = os.getenv("LANGFUSE_SECRET_KEY", "")
+    credentials = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
+
+    for model_def in MODEL_DEFINITIONS:
+        try:
+            data = _json.dumps(model_def).encode()
+            req = urllib.request.Request(
+                f"{host}/api/public/models",
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Basic {credentials}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status in (200, 201):
+                    print(f"  OK  model: {model_def['modelName']}")
+                else:
+                    print(f"  FAIL model: {model_def['modelName']} (status {resp.status})")
+        except urllib.error.HTTPError as e:
+            if e.code == 409:
+                print(f"  SKIP model: {model_def['modelName']} (already exists)")
+            else:
+                body = e.read().decode()[:200] if e.fp else ""
+                print(f"  FAIL model: {model_def['modelName']} ({e.code}: {body})")
+        except Exception as e:
+            print(f"  FAIL model: {model_def['modelName']}: {e}")
+
+
 def seed():
     client = get_langfuse_client()
     if client is None:
@@ -378,6 +429,10 @@ def seed():
 
     client.flush()
     print(f"\nSeeded {len(PROMPTS)} prompts.")
+
+    print("\nSeeding model definitions...")
+    _seed_model_definitions(client)
+    print("Done.")
 
 
 if __name__ == "__main__":
