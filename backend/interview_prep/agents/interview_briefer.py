@@ -3,7 +3,7 @@ from typing import Any
 
 from core.clients import get_gemini_client
 from interview_prep.schemas import InterviewPrepState, InterviewBriefing
-from interview_prep.prompts import INTERVIEW_BRIEFER_SYSTEM, INTERVIEW_BRIEFER_USER
+from interview_prep.prompts import INTERVIEW_BRIEFER_SYSTEM, get_interview_briefer_user
 
 
 def interview_briefer_node(state: InterviewPrepState) -> dict[str, Any]:
@@ -24,7 +24,7 @@ def interview_briefer_node(state: InterviewPrepState) -> dict[str, Any]:
             if tc.get("custom_instructions"):
                 tenant_block += f"\nCustom instructions: {tc['custom_instructions']}"
 
-        user_prompt = INTERVIEW_BRIEFER_USER.format(
+        user_prompt = get_interview_briefer_user(
             user_name=state["user_name"],
             life_stage=state["life_stage"],
             profile_analysis_json=profile_analysis_json,

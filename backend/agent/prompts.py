@@ -1,21 +1,6 @@
-"""Prompt templates for multi-agent voice interview system.
+from agent.prompt_manager import get_prompt
 
-Structured following OpenAI's official gpt-realtime prompting guide:
-  https://cookbook.openai.com/examples/realtime_prompting_guide
-
-Key principles:
-- Bullets over paragraphs
-- ALL CAPS for critical rules
-- Labeled sections the model can find and follow
-- Sample phrases to guide style
-- Explicit tool usage rules with preambles
-- Per-phase conversation flow with exit conditions
-"""
-
-# ---------------------------------------------------------------------------
-# Fallback: used when no pipeline briefing is available
-# ---------------------------------------------------------------------------
-AGENT_INSTRUCTION = """\
+_FALLBACK_AGENT_INSTRUCTION = """\
 # Role & Objective
 You are a friendly interviewer for MBIO helping users build their professional profile.
 Your goal is to learn about the candidate through a warm, natural voice conversation.
@@ -52,10 +37,7 @@ Ask these topics IN ORDER, one at a time. Wait for the user to respond before mo
 - Then call end_interview() IMMEDIATELY.
 """
 
-# ---------------------------------------------------------------------------
-# Base personality shared by ALL phase agents (gpt-realtime optimized)
-# ---------------------------------------------------------------------------
-BASE_PERSONALITY = """\
+_FALLBACK_BASE_PERSONALITY = """\
 # Role & Objective
 You are a professional interviewer conducting a voice interview to enhance a candidate's resume.
 Your goal is to ask the specific questions listed below and gather insightful answers.
@@ -76,59 +58,7 @@ Your goal is to ask the specific questions listed below and gather insightful an
 ## Variety
 - Do not repeat the same sentence twice. Vary your phrasing so it sounds natural."""
 
-
-def build_phase_instructions(
-    phase_name: str,
-    phase_goal: str,
-    questions: list[dict],
-    candidate_context: str,
-    is_last_phase: bool = False,
-    topics_to_avoid: list[str] | None = None,
-    personalization_hints: list[str] | None = None,
-) -> str:
-    """Build structured instructions for a single phase agent.
-
-    Follows OpenAI gpt-realtime prompting guide:
-    - Labeled sections
-    - Bullets over paragraphs
-    - Sample phrases for transitions
-    - Explicit tool rules with preambles
-    - Exit conditions per phase
-    """
-    # --- Questions block ---
-    questions_list = []
-    for i, q in enumerate(questions, 1):
-        text = q.get("question", q) if isinstance(q, dict) else str(q)
-        questions_list.append(f"{i}. {text}")
-    questions_block = "\n".join(questions_list)
-
-    # --- Constraints ---
-    avoid_block = ""
-    if topics_to_avoid:
-        items = ", ".join(topics_to_avoid)
-        avoid_block = f"\n## Topics to Avoid\n- DO NOT ask about: {items}"
-
-    hints_block = ""
-    if personalization_hints:
-        items = "\n".join(f"- {h}" for h in personalization_hints[:3])
-        hints_block = f"\n## Personalization Tips\n{items}"
-
-    # --- Tools section ---
-    if is_last_phase:
-        tools_section = """\
-# Tools
-## end_interview
-- Call AFTER you have said your farewell message.
-- Before calling: thank the candidate warmly, tell them their enhanced resume will be ready shortly, say a brief goodbye.
-- Sample preamble: "Thanks so much for sharing all of this. Your enhanced resume will be ready shortly. Take care!"
-- Then call end_interview() IMMEDIATELY.
-## early_exit
-- Call if the candidate wants to leave early (says bye, chau, adios, ciao, see you, etc.).
-- Before calling: say a brief warm farewell in English.
-- Then call early_exit() IMMEDIATELY."""
-        flow_exit = "Exit when: You have asked your questions and delivered the farewell. Call end_interview()."
-    else:
-        tools_section = f"""\
+_FALLBACK_PHASE_MIDDLE_TOOLS = """\
 # Tools
 ## move_to_next_phase
 - Call AFTER you have covered all your questions in this phase.
@@ -139,9 +69,54 @@ def build_phase_instructions(
 - Call if the candidate wants to leave early (says bye, chau, adios, ciao, see you, etc.).
 - Before calling: say a brief warm farewell in English.
 - Then call end_interview() IMMEDIATELY."""
-        flow_exit = "Exit when: You have asked your questions and gotten responses. Call move_to_next_phase()."
 
-    return f"""{BASE_PERSONALITY}
+_FALLBACK_PHASE_CLOSING_TOOLS = """\
+# Tools
+## end_interview
+- Call AFTER you have said your farewell message.
+- Before calling: thank the candidate warmly, tell them their enhanced resume will be ready shortly, say a brief goodbye.
+- Sample preamble: "Thanks so much for sharing all of this. Your enhanced resume will be ready shortly. Take care!"
+- Then call end_interview() IMMEDIATELY.
+## early_exit
+- Call if the candidate wants to leave early (says bye, chau, adios, ciao, see you, etc.).
+- Before calling: say a brief warm farewell in English.
+- Then call early_exit() IMMEDIATELY."""
+
+_FALLBACK_EXTRACTION = """\
+Extract structured profile information from this interview transcript.
+Return a JSON object with these fields:
+- first_name: User's first name
+- last_name: User's last name (if mentioned)
+- location: City/Country where they're from
+- career_goals: What they want to achieve professionally
+- achievements: List of their accomplishments mentioned
+- skills: Technical and soft skills mentioned
+- personality_traits: How they describe themselves
+- education: Their educational background
+- social_links: Any URLs or social profiles mentioned
+
+Only include fields that were explicitly mentioned in the conversation.
+Return valid JSON only, no additional text.
+"""
+
+
+def _build_fallback_phase(
+    phase_name: str,
+    phase_goal: str,
+    questions_block: str,
+    candidate_context: str,
+    is_last_phase: bool,
+    avoid_block: str,
+    hints_block: str,
+) -> str:
+    flow_exit = (
+        "Exit when: You have asked your questions and delivered the farewell. Call end_interview()."
+        if is_last_phase
+        else "Exit when: You have asked your questions and gotten responses. Call move_to_next_phase()."
+    )
+    tools = _FALLBACK_PHASE_CLOSING_TOOLS if is_last_phase else _FALLBACK_PHASE_MIDDLE_TOOLS
+
+    return f"""{_FALLBACK_BASE_PERSONALITY}
 
 # Context
 {candidate_context[:500]}
@@ -159,25 +134,57 @@ Goal: {phase_goal}
 - If they share something interesting, ask ONE brief follow-up, then move on.
 - {flow_exit}
 
-{tools_section}"""
+{tools}"""
 
 
-# ---------------------------------------------------------------------------
-# Profile extraction prompt (unchanged)
-# ---------------------------------------------------------------------------
-EXTRACTION_PROMPT = """
-Extract structured profile information from this interview transcript.
-Return a JSON object with these fields:
-- first_name: User's first name
-- last_name: User's last name (if mentioned)
-- location: City/Country where they're from
-- career_goals: What they want to achieve professionally
-- achievements: List of their accomplishments mentioned
-- skills: Technical and soft skills mentioned
-- personality_traits: How they describe themselves
-- education: Their educational background
-- social_links: Any URLs or social profiles mentioned
+AGENT_INSTRUCTION = get_prompt("voice/fallback-agent", fallback=_FALLBACK_AGENT_INSTRUCTION)
 
-Only include fields that were explicitly mentioned in the conversation.
-Return valid JSON only, no additional text.
-"""
+EXTRACTION_PROMPT = get_prompt("voice/extraction", fallback=_FALLBACK_EXTRACTION)
+
+
+def build_phase_instructions(
+    phase_name: str,
+    phase_goal: str,
+    questions: list[dict],
+    candidate_context: str,
+    is_last_phase: bool = False,
+    topics_to_avoid: list[str] | None = None,
+    personalization_hints: list[str] | None = None,
+) -> str:
+    questions_list = []
+    for i, q in enumerate(questions, 1):
+        text = q.get("question", q) if isinstance(q, dict) else str(q)
+        questions_list.append(f"{i}. {text}")
+    questions_block = "\n".join(questions_list)
+
+    avoid_block = ""
+    if topics_to_avoid:
+        items = ", ".join(topics_to_avoid)
+        avoid_block = f"\n## Topics to Avoid\n- DO NOT ask about: {items}"
+
+    hints_block = ""
+    if personalization_hints:
+        items = "\n".join(f"- {h}" for h in personalization_hints[:3])
+        hints_block = f"\n## Personalization Tips\n{items}"
+
+    prompt_name = "voice/phase-closing" if is_last_phase else "voice/phase-middle"
+    fallback = _build_fallback_phase(
+        phase_name=phase_name,
+        phase_goal=phase_goal,
+        questions_block=questions_block,
+        candidate_context=candidate_context[:500],
+        is_last_phase=is_last_phase,
+        avoid_block=avoid_block,
+        hints_block=hints_block,
+    )
+
+    return get_prompt(
+        prompt_name,
+        fallback=fallback,
+        candidate_context=candidate_context[:500],
+        phase_name=phase_name,
+        phase_goal=phase_goal,
+        questions_block=questions_block,
+        avoid_block=avoid_block,
+        hints_block=hints_block,
+    )

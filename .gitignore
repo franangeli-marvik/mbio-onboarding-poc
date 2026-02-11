@@ -33,3 +33,4 @@ console-recordings/
 npm-debug.log*
 
 *.pdf
+*.excalidraw

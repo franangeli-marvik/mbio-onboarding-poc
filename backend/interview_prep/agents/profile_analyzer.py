@@ -3,7 +3,7 @@ from typing import Any
 
 from core.clients import get_gemini_client
 from interview_prep.schemas import InterviewPrepState, ProfileAnalysis
-from interview_prep.prompts import PROFILE_ANALYZER_SYSTEM, PROFILE_ANALYZER_USER
+from interview_prep.prompts import PROFILE_ANALYZER_SYSTEM, get_profile_analyzer_user
 
 
 def profile_analyzer_node(state: InterviewPrepState) -> dict[str, Any]:
@@ -17,7 +17,7 @@ def profile_analyzer_node(state: InterviewPrepState) -> dict[str, Any]:
             if tc.get("custom_instructions"):
                 tenant_block += f"\nSpecial instructions: {tc['custom_instructions']}"
 
-        user_prompt = PROFILE_ANALYZER_USER.format(
+        user_prompt = get_profile_analyzer_user(
             user_name=state["user_name"],
             life_stage=state["life_stage"],
             resume_json=resume_json,

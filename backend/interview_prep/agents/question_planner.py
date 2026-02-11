@@ -3,7 +3,7 @@ from typing import Any
 
 from core.clients import get_gemini_client
 from interview_prep.schemas import InterviewPrepState, InterviewPlan
-from interview_prep.prompts import QUESTION_PLANNER_SYSTEM, QUESTION_PLANNER_USER
+from interview_prep.prompts import QUESTION_PLANNER_SYSTEM, get_question_planner_user
 
 
 def question_planner_node(state: InterviewPrepState) -> dict[str, Any]:
@@ -20,7 +20,7 @@ def question_planner_node(state: InterviewPrepState) -> dict[str, Any]:
             if tc.get("custom_instructions"):
                 tenant_block += f"\nSpecial instructions: {tc['custom_instructions']}"
 
-        user_prompt = QUESTION_PLANNER_USER.format(
+        user_prompt = get_question_planner_user(
             profile_analysis_json=profile_analysis_json,
             user_name=state["user_name"],
             life_stage=state["life_stage"],
