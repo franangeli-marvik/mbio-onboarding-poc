@@ -32,6 +32,10 @@ from core.clients import get_openai_client
 
 load_dotenv()
 
+# Build version tag — printed at startup and in every session for easy verification
+AGENT_VERSION = "v2.1-gpt-realtime-20260211"
+print(f"[AGENT] ========== BOOT {AGENT_VERSION} | model_provider={MODEL_PROVIDER} ==========")
+
 logging.getLogger("opentelemetry.exporter.otlp.proto.http._log_exporter").setLevel(
     logging.CRITICAL
 )
@@ -350,6 +354,7 @@ INACTIVITY_TIMEOUT = 300
 # Entrypoint
 # ---------------------------------------------------------------------------
 async def entrypoint(ctx: agents.JobContext):
+    print(f"[AGENT] === NEW SESSION === {AGENT_VERSION}")
     setup_langfuse()
     await ctx.connect()
 
