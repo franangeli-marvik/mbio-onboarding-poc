@@ -167,6 +167,28 @@ def extract_profile(transcript: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Deferred session close (avoids RuntimeError when called from function tools)
+# ---------------------------------------------------------------------------
+def _schedule_session_close(session: AgentSession, delay: float = 1.0):
+    """Schedule session.aclose() on the event loop with a short delay.
+
+    Calling session.drain()/aclose() directly inside a @function_tool causes
+    'RuntimeError: aclose(): asynchronous generator is already running' because
+    the tool runs inside the session's processing pipeline. Deferring the close
+    to a separate task avoids the conflict.
+    """
+    async def _deferred():
+        await asyncio.sleep(delay)
+        try:
+            print("[AGENT] Executing deferred session close")
+            await session.aclose()
+        except Exception as e:
+            print(f"[AGENT] Error during deferred close: {e}")
+
+    asyncio.create_task(_deferred())
+
+
+# ---------------------------------------------------------------------------
 # Shared interview state (passed via session.userdata)
 # ---------------------------------------------------------------------------
 @dataclass
@@ -243,10 +265,9 @@ class BaseInterviewAgent(Agent):
                 print(f"[AGENT] Handoff: {self.__class__.__name__} -> {next_name}")
                 return next_agent, f"Moving to {next_name} phase"
 
-        # No more phases — end the interview
-        print(f"[AGENT] No more phases, ending interview")
-        await self.session.drain()
-        await self.session.aclose()
+        # No more phases — schedule session close (deferred to avoid RuntimeError)
+        print(f"[AGENT] No more phases, scheduling session close")
+        _schedule_session_close(self.session)
         return self, "Interview complete"
 
 
@@ -286,15 +307,13 @@ def create_phase_agent(
             async def end_interview(self, context: RunContext):
                 """End the interview session. Call this after your farewell message."""
                 print(f"[AGENT] end_interview() called in closing phase")
-                await self.session.drain()
-                await self.session.aclose()
+                _schedule_session_close(self.session)
 
             @function_tool()
             async def early_exit(self, context: RunContext):
                 """Use if the candidate wants to leave early."""
                 print(f"[AGENT] early_exit() called")
-                await self.session.drain()
-                await self.session.aclose()
+                _schedule_session_close(self.session)
 
         return ClosingPhaseAgent()
     else:
@@ -313,8 +332,7 @@ def create_phase_agent(
             async def end_interview(self, context: RunContext):
                 """Use if the candidate wants to leave early."""
                 print(f"[AGENT] end_interview() (early exit) from {phase_name}")
-                await self.session.drain()
-                await self.session.aclose()
+                _schedule_session_close(self.session)
 
         return InterviewPhaseAgent()
 
@@ -340,8 +358,8 @@ class FallbackAssistant(Agent):
     @function_tool()
     async def end_interview(self, context: RunContext):
         """End the interview session. Call this after your farewell message."""
-        await self.session.drain()
-        await self.session.aclose()
+        print(f"[AGENT] end_interview() called (fallback)")
+        _schedule_session_close(self.session)
 
 
 # ---------------------------------------------------------------------------
@@ -490,8 +508,7 @@ async def entrypoint(ctx: agents.JobContext):
             elapsed = time.time() - last_activity_time[0]
             if elapsed > INACTIVITY_TIMEOUT:
                 print("[AGENT] Inactivity timeout reached, closing session")
-                await session.drain()
-                await session.aclose()
+                _schedule_session_close(session, delay=0.1)
                 break
 
     asyncio.create_task(check_inactivity())
