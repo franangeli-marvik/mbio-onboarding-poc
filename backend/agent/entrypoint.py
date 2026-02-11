@@ -85,7 +85,7 @@ def get_realtime_model():
             location=GCP_LOCATION,
         )
     return openai_realtime.RealtimeModel(
-        model="gpt-4o-realtime-preview",
+        model="gpt-realtime",
         voice="alloy",
         modalities=["audio", "text"],
     )
@@ -209,9 +209,21 @@ class BaseInterviewAgent(Agent):
             chat_ctx.items.extend(items_copy)
 
         await self.update_chat_ctx(chat_ctx)
-        # Let the agent generate a natural transition (tool_choice="none" prevents
-        # it from immediately calling a tool)
-        self.session.generate_reply(tool_choice="none")
+
+        # Generate a response: greeting for first agent, natural transition for subsequent
+        if userdata.current_phase_idx == 0 and userdata.prev_agent is None:
+            # First agent: warm greeting + first question from the instructions
+            name = userdata.candidate_name or "there"
+            self.session.generate_reply(
+                instructions=(
+                    f"Greet {name} warmly in English. "
+                    f"Then ask your first question from the QUESTIONS TO ASK list. "
+                    f"Keep it to 2 sentences."
+                )
+            )
+        else:
+            # Subsequent agents: natural transition, no tool call yet
+            self.session.generate_reply(tool_choice="none")
 
     async def _transfer_to_next(self, context: RunContext) -> tuple[Agent, str]:
         """Transfer to the next phase agent."""
@@ -309,6 +321,17 @@ def create_phase_agent(
 class FallbackAssistant(Agent):
     def __init__(self, instructions: str | None = None) -> None:
         super().__init__(instructions=instructions or AGENT_INSTRUCTION)
+
+    async def on_enter(self) -> None:
+        userdata: InterviewUserData = self.session.userdata
+        name = userdata.candidate_name or "there"
+        self.session.generate_reply(
+            instructions=(
+                f"Greet {name} warmly in English. "
+                f"Then ask about their main career goal. "
+                f"Keep it to 2 sentences."
+            )
+        )
 
     @function_tool()
     async def end_interview(self, context: RunContext):
@@ -593,7 +616,23 @@ async def entrypoint(ctx: agents.JobContext):
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-        os._exit(0)
+        print(
+            f"[AGENT] Session closed | duration={duration_seconds:.1f}s | "
+            f"transcript_turns={len(transcript_history)} | "
+            f"reason={event.reason.value if event.reason else 'unknown'}"
+        )
+
+        # Safe shutdown: only hard-exit after a real session (>10s).
+        # Very short sessions (<10s) are likely spurious close events;
+        # killing the process would leave the Realtime model running
+        # autonomously without Python control.
+        if duration_seconds > 10:
+            os._exit(0)
+        else:
+            print(
+                f"[AGENT] Short session ({duration_seconds:.1f}s), "
+                f"skipping os._exit to avoid orphaned model"
+            )
 
     # ------------------------------------------------------------------
     # Start the session
@@ -631,35 +670,10 @@ async def entrypoint(ctx: agents.JobContext):
     userdata.candidate_name = user_name
 
     # ------------------------------------------------------------------
-    # Initial greeting
+    # Initial greeting is handled by on_enter() of the first agent.
+    # No additional generate_reply here to avoid double-response.
     # ------------------------------------------------------------------
-    if use_multi_agent:
-        # The on_enter of the first agent handles the greeting via generate_reply
-        # But we give it a nudge with the user's name
-        first_phase = plan["phases"][0] if plan and plan.get("phases") else None
-        first_q = ""
-        if first_phase and first_phase.get("questions"):
-            q = first_phase["questions"][0]
-            first_q = q.get("question", "") if isinstance(q, dict) else str(q)
-
-        greeting = (
-            f"Greet {user_name} warmly in English. "
-            f"Then ask: \"{first_q}\"" if first_q
-            else f"Greet {user_name} warmly in English and start with your first question."
-        )
-        await session.generate_reply(instructions=greeting)
-        print(f"[AGENT] Initial greeting sent for {user_name}")
-    else:
-        # Fallback greeting
-        await session.generate_reply(
-            instructions=(
-                f"Say exactly this in English: "
-                f"\"Hi {user_name}, thanks for joining! "
-                f"What's your main career goal right now?\" "
-                f"You MUST say this in English. Do NOT translate it."
-            )
-        )
-        print(f"[AGENT] Fallback greeting sent for {user_name}")
+    print(f"[AGENT] Session started for {user_name}, on_enter handles greeting")
 
 
 if __name__ == "__main__":
