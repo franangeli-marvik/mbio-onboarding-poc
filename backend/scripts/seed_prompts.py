@@ -368,6 +368,17 @@ MODEL_DEFINITIONS: list[dict] = [
         "totalPrice": None,
         "tokenizerId": None,
     },
+    {
+        # gpt-realtime: blended price for mixed audio (~75%) + text (~25%) tokens
+        # Audio: input $32/1M, output $64/1M | Text: input $4/1M, output $16/1M
+        "modelName": "gpt-realtime",
+        "matchPattern": "(?i)gpt-realtime",
+        "unit": "TOKENS",
+        "inputPrice": 0.000024,
+        "outputPrice": 0.000055,
+        "totalPrice": None,
+        "tokenizerId": None,
+    },
 ]
 
 
