@@ -25,7 +25,7 @@ interface TenantData {
 
 const BASICS_QUESTION_IDS = ['name', 'location'];
 
-type InterviewMode = 'basics' | 'position-select' | 'resume-upload' | 'pipeline-loading' | 'voice';
+type InterviewMode = 'basics' | 'position-select' | 'resume-upload' | 'pipeline-loading' | 'voice' | 'enhancing';
 
 const PIPELINE_STEPS = [
   'Parsing resume...',
@@ -143,7 +143,7 @@ function QuestionnaireContent() {
     transcript: Array<{ role: string; text: string }>
   ) => {
     sessionStorage.setItem('interviewTranscript', JSON.stringify(transcript));
-    router.push('/profile/preview');
+    setMode('enhancing');
   };
 
   if (loading || (mode === 'basics' && !currentQuestion)) {
@@ -387,6 +387,19 @@ function QuestionnaireContent() {
     );
   }
 
+  if (mode === 'enhancing') {
+    return (
+      <EnhancingScreen
+        answers={answers}
+        onComplete={() => router.push('/profile/preview')}
+        onError={(error) => {
+          console.error('Enhancement failed:', error);
+          router.push('/profile/preview');
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40 flex flex-col">
       <div className="w-full pt-8">
@@ -580,6 +593,99 @@ function PipelineLoadingScreen({
                 </div>
               );
             })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+interface EnhancingScreenProps {
+  answers: Record<string, string>;
+  onComplete: () => void;
+  onError: (error: string) => void;
+}
+
+function EnhancingScreen({ answers, onComplete, onError }: EnhancingScreenProps) {
+  const called = useRef(false);
+
+  const handleComplete = useCallback(onComplete, [onComplete]);
+  const handleError = useCallback(onError, [onError]);
+
+  useEffect(() => {
+    if (called.current) return;
+    called.current = true;
+
+    const resumeRaw = sessionStorage.getItem('resumeContext');
+    const transcriptRaw = sessionStorage.getItem('interviewTranscript');
+    const analysisRaw = sessionStorage.getItem('profileAnalysis');
+
+    if (!resumeRaw || !transcriptRaw) {
+      handleComplete();
+      return;
+    }
+
+    const body = {
+      resume_data: JSON.parse(resumeRaw),
+      transcript: JSON.parse(transcriptRaw),
+      profile_analysis: analysisRaw ? JSON.parse(analysisRaw) : null,
+      basics_answers: answers,
+    };
+
+    fetch('/api/backend/enhance-resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          sessionStorage.setItem('originalProfile', JSON.stringify(data.original));
+          sessionStorage.setItem('enhancedProfile', JSON.stringify(data.enhanced));
+        }
+        setTimeout(handleComplete, 600);
+      })
+      .catch((err) => {
+        console.error('Enhancement API error:', err);
+        handleError(err.message || 'Enhancement failed');
+      });
+  }, [answers, handleComplete, handleError]);
+
+  return (
+    <div className="min-h-screen w-full bg-gradient-to-br from-white via-blue-50/30 to-emerald-50/40 flex flex-col">
+      <div className="w-full pt-8">
+        <ProgressIndicator
+          currentStep={4}
+          totalSteps={5}
+          steps={getPhaseSteps()}
+        />
+      </div>
+
+      <div className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="max-w-md w-full space-y-12 text-center">
+          <div className="relative flex items-center justify-center">
+            <div className="absolute w-48 h-48 rounded-full bg-gradient-to-br from-emerald-200/40 to-teal-200/40 blur-3xl animate-pulse" />
+            <div className="absolute w-32 h-32 rounded-full bg-gradient-to-br from-emerald-300/50 to-teal-300/50 blur-2xl animate-pulse" style={{ animationDelay: '0.5s' }} />
+            <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-teal-400 shadow-2xl shadow-emerald-500/50 animate-pulse" style={{ animationDelay: '0.25s' }} />
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-2xl font-serif font-semibold text-gray-800">
+              Enhancing your resume...
+            </h2>
+            <p className="text-gray-500">
+              Merging interview insights with your original resume
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {['Analyzing interview responses', 'Enriching experience details', 'Generating enhanced resume'].map((step, i) => (
+              <div key={i} className="flex items-center gap-3 justify-center">
+                <div className="w-2 h-2 rounded-full bg-msu-green animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
+                <span className="text-sm text-gray-600">{step}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>

@@ -16,6 +16,7 @@ from core.extraction import (
     extract_profile_features,
     convert_to_profile_format,
 )
+from core.enhancement import enhance_resume, convert_resume_to_profile
 from interview_prep import run_interview_prep_pipeline
 from resume.parser import parse_resume, get_mime_type
 from storage import get_storage
@@ -167,6 +168,13 @@ class GenerateProfileRequest(BaseModel):
     session_id: str | None = None
 
 
+class EnhanceResumeRequest(BaseModel):
+    resume_data: dict
+    transcript: list[dict]
+    profile_analysis: dict | None = None
+    basics_answers: dict | None = None
+
+
 class PrepareInterviewRequest(BaseModel):
     resume_data: dict
     life_stage: str
@@ -297,6 +305,25 @@ async def generate_profile_from_interview(request: GenerateProfileRequest):
         return {"success": True, "profile": profile, "extracted_features": extracted}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Profile generation failed: {e}")
+
+
+@app.post("/api/enhance-resume")
+async def enhance_resume_endpoint(request: EnhanceResumeRequest):
+    try:
+        original_profile = convert_resume_to_profile(request.resume_data)
+        enhanced_profile = enhance_resume(
+            resume_data=request.resume_data,
+            transcript=request.transcript,
+            profile_analysis=request.profile_analysis,
+            basics_answers=request.basics_answers,
+        )
+        return {
+            "success": True,
+            "original": original_profile,
+            "enhanced": enhanced_profile,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Resume enhancement failed: {e}")
 
 
 @app.get("/api/sessions")
