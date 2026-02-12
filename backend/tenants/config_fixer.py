@@ -1,4 +1,3 @@
-import hashlib
 import json
 import logging
 from typing import Optional
@@ -7,23 +6,34 @@ from interview_prep.schemas import TenantConfig
 
 logger = logging.getLogger(__name__)
 
-_fix_cache: dict[str, TenantConfig] = {}
-
 GEMINI_MODEL = "gemini-2.0-flash"
 
 
-def _cache_key(tenant_id: str, raw: dict) -> str:
-    raw_bytes = json.dumps(raw, sort_keys=True).encode()
-    digest = hashlib.sha256(raw_bytes).hexdigest()[:16]
-    return f"{tenant_id}:{digest}"
+def _persist_fixed_config(tenant_id: str, fixed_config: dict) -> None:
+    try:
+        from core.clients import get_langfuse_client
+
+        client = get_langfuse_client()
+        if client is None:
+            return
+
+        prompt_name = f"tenant/{tenant_id}"
+        client.create_prompt(
+            name=prompt_name,
+            type="text",
+            prompt=f"Auto-corrected config for {tenant_id}",
+            config=fixed_config,
+            labels=["production"],
+        )
+        logger.info(
+            "Persisted auto-fixed config to Langfuse for %s (new version created)",
+            tenant_id,
+        )
+    except Exception as e:
+        logger.warning("Failed to persist fixed config to Langfuse for %s: %s", tenant_id, e)
 
 
 def fix_tenant_config(raw: dict, tenant_id: str) -> Optional[TenantConfig]:
-    key = _cache_key(tenant_id, raw)
-    if key in _fix_cache:
-        logger.info("Tenant config fix cache hit for %s", tenant_id)
-        return _fix_cache[key]
-
     try:
         from core.clients import get_gemini_client
 
@@ -50,8 +60,10 @@ def fix_tenant_config(raw: dict, tenant_id: str) -> Optional[TenantConfig]:
         fixed = json.loads(response.text)
         fixed.setdefault("tenant_id", tenant_id)
         config = TenantConfig(**fixed)
-        _fix_cache[key] = config
         logger.info("Gemini auto-fixed tenant config for %s", tenant_id)
+
+        _persist_fixed_config(tenant_id, config.model_dump(mode="json"))
+
         return config
 
     except Exception as e:
