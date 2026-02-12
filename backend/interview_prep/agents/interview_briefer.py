@@ -27,6 +27,10 @@ def interview_briefer_node(state: InterviewPrepState) -> dict[str, Any]:
             tenant_block = f"\n\n## Recruiter Tone & Style\nTone: {tc.get('tone', 'supportive')}\nFocus: {tc.get('focus_area', 'General')}"
             if tc.get("custom_instructions"):
                 tenant_block += f"\nCustom instructions: {tc['custom_instructions']}"
+            if tc.get("key_areas"):
+                tenant_block += f"\nKey areas to explore: {', '.join(tc['key_areas'])}"
+            if tc.get("must_verify"):
+                tenant_block += f"\nMust verify: {', '.join(tc['must_verify'])}"
 
         user_prompt = get_interview_briefer_user(
             user_name=state["user_name"],

@@ -358,6 +358,115 @@ PROMPTS: list[dict] = [
 ]
 
 
+TENANT_PROMPTS: list[dict] = [
+    {
+        "name": "tenant/acme_corp",
+        "type": "text",
+        "prompt": (
+            "# Acme Corporation\n"
+            "Enterprise SaaS company focused on AI-powered analytics for Fortune 500 clients.\n"
+            "Industry: Technology | Tone: direct"
+        ),
+        "config": {
+            "tenant_id": "acme_corp",
+            "company_name": "Acme Corporation",
+            "tone": "direct",
+            "industry": "Technology",
+            "description": "Enterprise SaaS company focused on AI-powered analytics for Fortune 500 clients.",
+            "positions": [
+                {
+                    "id": "senior_ml_engineer",
+                    "title": "Senior ML Engineer",
+                    "focus_area": "ML systems design, model deployment, MLOps",
+                    "custom_instructions": (
+                        "Focus on quantifiable achievements. Probe for system design decisions "
+                        "and trade-offs. Ask about scale (data volume, QPS, team size). "
+                        "Prioritize concrete examples over general statements."
+                    ),
+                    "key_areas": [
+                        "distributed training",
+                        "model serving",
+                        "A/B testing",
+                        "data pipelines",
+                        "feature stores",
+                    ],
+                    "must_verify": [
+                        "hands-on experience with production ML systems at scale",
+                        "quantifiable impact metrics",
+                    ],
+                },
+                {
+                    "id": "sales_enablement",
+                    "title": "Sales Enablement Manager",
+                    "focus_area": "Sales strategy, team enablement, revenue operations",
+                    "custom_instructions": (
+                        "Focus on revenue impact and team growth metrics. Explore leadership "
+                        "style and change management experience. Ask for specific numbers on "
+                        "deals closed, team size managed, and quota attainment."
+                    ),
+                    "key_areas": [
+                        "CRM tools",
+                        "sales methodology",
+                        "team training programs",
+                        "pipeline management",
+                    ],
+                    "must_verify": [
+                        "metrics-driven approach",
+                        "cross-functional collaboration",
+                        "revenue impact",
+                    ],
+                },
+                {
+                    "id": "data_analyst",
+                    "title": "Data Analyst",
+                    "focus_area": "Data analysis, business intelligence, stakeholder communication",
+                    "custom_instructions": (
+                        "Focus on end-to-end analysis examples. Ask about the business question, "
+                        "the approach, the tools used, and the outcome. Probe for cases where "
+                        "analysis changed a business decision."
+                    ),
+                    "key_areas": [
+                        "SQL proficiency",
+                        "visualization tools",
+                        "statistical methods",
+                        "business impact of analyses",
+                    ],
+                    "must_verify": [
+                        "ability to translate data into actionable insights",
+                        "experience presenting to non-technical stakeholders",
+                    ],
+                },
+            ],
+        },
+        "labels": ["production"],
+    },
+    {
+        "name": "tenant/default",
+        "type": "text",
+        "prompt": (
+            "# M.bio Default Tenant\n"
+            "Default configuration for general professional profile creation."
+        ),
+        "config": {
+            "tenant_id": "default",
+            "company_name": "M.bio",
+            "tone": "supportive",
+            "positions": [
+                {
+                    "id": "general",
+                    "title": "General Professional",
+                    "focus_area": "General Professional Development",
+                    "custom_instructions": None,
+                    "key_areas": [],
+                    "must_verify": [],
+                },
+            ],
+        },
+        "labels": ["production"],
+    },
+]
+
+
 MODEL_DEFINITIONS: list[dict] = [
     {
         "modelName": "gemini-2.0-flash",
@@ -420,6 +529,21 @@ def _seed_model_definitions(client):
             print(f"  FAIL model: {model_def['modelName']}: {e}")
 
 
+def _seed_tenant_prompts(client):
+    for definition in TENANT_PROMPTS:
+        try:
+            client.create_prompt(
+                name=definition["name"],
+                type=definition["type"],
+                prompt=definition["prompt"],
+                config=definition["config"],
+                labels=definition.get("labels", []),
+            )
+            print(f"  OK  {definition['name']}")
+        except Exception as e:
+            print(f"  FAIL {definition['name']}: {e}")
+
+
 def seed():
     client = get_langfuse_client()
     if client is None:
@@ -440,6 +564,11 @@ def seed():
 
     client.flush()
     print(f"\nSeeded {len(PROMPTS)} prompts.")
+
+    print("\nSeeding tenant prompts...")
+    _seed_tenant_prompts(client)
+    client.flush()
+    print(f"Seeded {len(TENANT_PROMPTS)} tenant prompts.")
 
     print("\nSeeding model definitions...")
     _seed_model_definitions(client)

@@ -20,6 +20,10 @@ def profile_analyzer_node(state: InterviewPrepState) -> dict[str, Any]:
             tenant_block = f"\n\n## Recruiter Focus\nFocus area: {tc.get('focus_area', 'General')}\nTone: {tc.get('tone', 'supportive')}"
             if tc.get("custom_instructions"):
                 tenant_block += f"\nSpecial instructions: {tc['custom_instructions']}"
+            if tc.get("key_areas"):
+                tenant_block += f"\nKey areas to explore: {', '.join(tc['key_areas'])}"
+            if tc.get("must_verify"):
+                tenant_block += f"\nMust verify: {', '.join(tc['must_verify'])}"
 
         user_prompt = get_profile_analyzer_user(
             user_name=state["user_name"],

@@ -23,6 +23,10 @@ def question_planner_node(state: InterviewPrepState) -> dict[str, Any]:
             tenant_block = f"\n\n## Recruiter Requirements\nFocus area: {tc.get('focus_area', 'General')}\nTone: {tc.get('tone', 'supportive')}"
             if tc.get("custom_instructions"):
                 tenant_block += f"\nSpecial instructions: {tc['custom_instructions']}"
+            if tc.get("key_areas"):
+                tenant_block += f"\nKey areas to explore: {', '.join(tc['key_areas'])}"
+            if tc.get("must_verify"):
+                tenant_block += f"\nMust verify: {', '.join(tc['must_verify'])}"
 
         user_prompt = get_question_planner_user(
             profile_analysis_json=profile_analysis_json,

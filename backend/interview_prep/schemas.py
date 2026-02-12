@@ -26,12 +26,16 @@ class PositionConfig(BaseModel):
     title: str
     focus_area: str
     custom_instructions: str | None = None
+    key_areas: list[str] = Field(default_factory=list)
+    must_verify: list[str] = Field(default_factory=list)
 
 
 class TenantConfig(BaseModel):
     tenant_id: str
     company_name: str
     tone: Literal["formal", "casual", "direct", "supportive"] = Field(default="supportive")
+    industry: str | None = None
+    description: str | None = None
     positions: list[PositionConfig] = Field(default_factory=list)
 
 
