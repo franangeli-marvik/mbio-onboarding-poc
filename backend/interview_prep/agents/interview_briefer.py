@@ -5,7 +5,7 @@ from core.clients import get_gemini_client
 from agent.prompt_manager import get_langfuse_prompt
 from observability.tracing import traced_generation
 from interview_prep.schemas import InterviewPrepState, InterviewBriefing
-from interview_prep.prompts import INTERVIEW_BRIEFER_SYSTEM, get_interview_briefer_user
+from interview_prep.prompts import get_interview_briefer_system, get_interview_briefer_user
 
 MODEL = "gemini-2.0-flash"
 
@@ -39,8 +39,9 @@ def interview_briefer_node(state: InterviewPrepState) -> dict[str, Any]:
             interview_plan_json=interview_plan_json,
         ) + tenant_block
 
+        system_prompt = get_interview_briefer_system()
         contents = [
-            {"role": "user", "parts": [{"text": INTERVIEW_BRIEFER_SYSTEM}]},
+            {"role": "user", "parts": [{"text": system_prompt}]},
             {"role": "model", "parts": [{"text": "I understand. I will create a comprehensive briefing document for the voice agent."}]},
             {"role": "user", "parts": [{"text": user_prompt}]},
         ]
@@ -51,7 +52,7 @@ def interview_briefer_node(state: InterviewPrepState) -> dict[str, Any]:
             "interview_briefer",
             model=MODEL,
             prompt=lf_prompt,
-            input_data={"system": INTERVIEW_BRIEFER_SYSTEM, "user": user_prompt[:2000]},
+            input_data={"system": system_prompt, "user": user_prompt[:2000]},
         ) as gen:
             client = get_gemini_client()
             response = client.models.generate_content(

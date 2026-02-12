@@ -26,7 +26,7 @@ from livekit.agents.metrics import UsageCollector
 from livekit.plugins.openai import realtime as openai_realtime
 from livekit.plugins.google import realtime as google_realtime
 
-from agent.prompts import AGENT_INSTRUCTION, EXTRACTION_PROMPT, build_phase_instructions
+from agent.prompts import get_agent_instruction, get_extraction_prompt, build_phase_instructions
 from core.config import MODEL_PROVIDER, GCP_PROJECT, GCP_LOCATION, DATA_DIR
 from core.clients import get_openai_client
 
@@ -155,7 +155,7 @@ def extract_profile(transcript: list) -> dict:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": EXTRACTION_PROMPT},
+                {"role": "system", "content": get_extraction_prompt()},
                 {"role": "user", "content": transcript_text},
             ],
             temperature=0,
@@ -342,7 +342,7 @@ def create_phase_agent(
 # ---------------------------------------------------------------------------
 class FallbackAssistant(Agent):
     def __init__(self, instructions: str | None = None) -> None:
-        super().__init__(instructions=instructions or AGENT_INSTRUCTION)
+        super().__init__(instructions=instructions or get_agent_instruction())
 
     async def on_enter(self) -> None:
         userdata: InterviewUserData = self.session.userdata

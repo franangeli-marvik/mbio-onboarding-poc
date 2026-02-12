@@ -141,9 +141,12 @@ Total questions in this phase: {num_questions}
 {tools}"""
 
 
-AGENT_INSTRUCTION = get_prompt("voice/fallback-agent", fallback=_FALLBACK_AGENT_INSTRUCTION)
+def get_agent_instruction() -> str:
+    return get_prompt("voice/fallback-agent", fallback=_FALLBACK_AGENT_INSTRUCTION)
 
-EXTRACTION_PROMPT = get_prompt("voice/extraction", fallback=_FALLBACK_EXTRACTION)
+
+def get_extraction_prompt() -> str:
+    return get_prompt("voice/extraction", fallback=_FALLBACK_EXTRACTION)
 
 
 def build_phase_instructions(

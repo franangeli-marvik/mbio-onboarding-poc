@@ -203,8 +203,3 @@ def get_interview_briefer_user(
         profile_analysis_json=profile_analysis_json,
         interview_plan_json=interview_plan_json,
     )
-
-
-PROFILE_ANALYZER_SYSTEM = get_profile_analyzer_system()
-QUESTION_PLANNER_SYSTEM = get_question_planner_system()
-INTERVIEW_BRIEFER_SYSTEM = get_interview_briefer_system()

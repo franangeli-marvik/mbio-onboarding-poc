@@ -5,7 +5,7 @@ from core.clients import get_gemini_client
 from agent.prompt_manager import get_langfuse_prompt
 from observability.tracing import traced_generation
 from interview_prep.schemas import InterviewPrepState, ProfileAnalysis
-from interview_prep.prompts import PROFILE_ANALYZER_SYSTEM, get_profile_analyzer_user
+from interview_prep.prompts import get_profile_analyzer_system, get_profile_analyzer_user
 
 MODEL = "gemini-2.0-flash"
 
@@ -31,8 +31,9 @@ def profile_analyzer_node(state: InterviewPrepState) -> dict[str, Any]:
             resume_json=resume_json,
         ) + tenant_block
 
+        system_prompt = get_profile_analyzer_system()
         contents = [
-            {"role": "user", "parts": [{"text": PROFILE_ANALYZER_SYSTEM}]},
+            {"role": "user", "parts": [{"text": system_prompt}]},
             {"role": "model", "parts": [{"text": "I understand. I will analyze the resume and provide structured insights for the voice interview."}]},
             {"role": "user", "parts": [{"text": user_prompt}]},
         ]
@@ -43,7 +44,7 @@ def profile_analyzer_node(state: InterviewPrepState) -> dict[str, Any]:
             "profile_analyzer",
             model=MODEL,
             prompt=lf_prompt,
-            input_data={"system": PROFILE_ANALYZER_SYSTEM, "user": user_prompt[:2000]},
+            input_data={"system": system_prompt, "user": user_prompt[:2000]},
         ) as gen:
             client = get_gemini_client()
             response = client.models.generate_content(

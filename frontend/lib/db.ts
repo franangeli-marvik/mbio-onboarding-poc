@@ -1,7 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { questions as defaultQuestions, Question } from './questions';
 
-const QUESTIONS_KEY = 'msu-demo:questions:v2';
+const QUESTIONS_KEY = 'msu-demo:questions';
 
 // Check if Redis is configured
 const isRedisConfigured = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
