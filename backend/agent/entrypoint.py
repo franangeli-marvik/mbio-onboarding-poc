@@ -638,6 +638,55 @@ async def entrypoint(ctx: agents.JobContext):
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
+        # --- Send session data to Langfuse ---
+        try:
+            from core.clients import get_langfuse_client
+            from langfuse.media import LangfuseMedia
+
+            langfuse = get_langfuse_client()
+            if langfuse:
+                # Wrap audio as LangfuseMedia if available
+                audio_media = None
+                if audio_saved and audio_output_path.exists():
+                    audio_bytes = audio_output_path.read_bytes()
+                    audio_media = LangfuseMedia(
+                        content_bytes=audio_bytes,
+                        content_type="audio/ogg",
+                    )
+
+                # Resolve full participant name from room metadata
+                participant_full_name = user_name
+                try:
+                    _rm = json.loads(ctx.room.metadata) if ctx.room.metadata else {}
+                    participant_full_name = _rm.get("participant_name", user_name)
+                except Exception:
+                    pass
+
+                trace = langfuse.trace(
+                    name="voice-interview",
+                    session_id=room_name,
+                    user_id=participant_full_name,
+                    input={"transcript": transcript_history},
+                    output=extracted_profile,
+                    metadata={
+                        "session_id": session_id,
+                        "room_name": room_name,
+                        "close_reason": event.reason.value if event.reason else "unknown",
+                        "duration": metadata["duration"],
+                        "latency": latency_stats,
+                        "token_usage": metadata["token_usage"],
+                        "phases": metadata["phases"],
+                        "multi_agent": use_multi_agent,
+                        "model_provider": MODEL_PROVIDER,
+                        "transcript_turns": len(transcript_history),
+                        "audio": audio_media,
+                    },
+                )
+                langfuse.flush()
+                print(f"[AGENT] Langfuse trace created: {trace.id}")
+        except Exception as e:
+            print(f"[AGENT] Failed to send session data to Langfuse: {e}")
+
         print(
             f"[AGENT] Session closed | duration={duration_seconds:.1f}s | "
             f"transcript_turns={len(transcript_history)} | "
