@@ -32,6 +32,14 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
   const completingRef = useRef(false);
   const farewellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const participantName = basicsAnswers.name || 'User';
+  const [answeredCount, setAnsweredCount] = useState(0);
+
+  const totalQuestions = (() => {
+    if (!interviewPlan) return 0;
+    const phases = (interviewPlan as { phases?: Array<{ questions?: unknown[] }> }).phases;
+    if (!Array.isArray(phases)) return 0;
+    return phases.reduce((sum, phase) => sum + (Array.isArray(phase.questions) ? phase.questions.length : 0), 0);
+  })();
 
   const FAREWELL_PATTERNS = [
     'interview is complete', 'interview complete', 'enhanced resume',
@@ -169,6 +177,10 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
                 text,
                 timestamp: new Date().toISOString()
               }]);
+              const wordCount = text.trim().split(/\s+/).length;
+              if (wordCount >= 3) {
+                setAnsweredCount(prev => Math.min(prev + 1, totalQuestions || 999));
+              }
               setUserText('');
             }
           }
@@ -360,6 +372,11 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
               I'll ask you about your goals, experiences, skills, and aspirations.
               Just speak naturally - no need to press any buttons.
             </p>
+            {totalQuestions > 0 && (
+              <p className="text-sm text-emerald-600 font-medium">
+                {totalQuestions} questions &middot; ~{Math.ceil(totalQuestions * 1.2)} minutes
+              </p>
+            )}
             <p className="text-sm text-gray-500">
               You can also type notes if you want to add specific details.
             </p>
@@ -449,9 +466,27 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
             </div>
           </div>
 
-          {/* Transcript hidden - only used for profile generation */}
-
-          {/* Conversation history - hidden, only used for profile generation */}
+          {/* Interview question progress */}
+          {totalQuestions > 0 && (
+            <div className="mt-6 w-full max-w-sm mx-auto space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">
+                  {answeredCount >= totalQuestions
+                    ? 'All questions covered'
+                    : `Question ${Math.min(answeredCount + 1, totalQuestions)} of ${totalQuestions}`}
+                </span>
+                <span className="text-gray-400 font-medium">
+                  {Math.round((answeredCount / totalQuestions) * 100)}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-msu-green to-emerald-400 rounded-full transition-all duration-700 ease-out"
+                  style={{ width: `${Math.round((answeredCount / totalQuestions) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Notes input (optional) */}
           <div className="mt-8 space-y-3">
