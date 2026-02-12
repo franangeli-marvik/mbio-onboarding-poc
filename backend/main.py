@@ -323,6 +323,8 @@ async def enhance_resume_endpoint(request: EnhanceResumeRequest):
             "enhanced": enhanced_profile,
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Resume enhancement failed: {e}")
 
 

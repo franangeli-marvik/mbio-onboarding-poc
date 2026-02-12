@@ -19,16 +19,25 @@ def traced_generation(name: str, *, model: str, prompt=None, input_data=None):
         return
 
     try:
-        with langfuse.start_as_current_observation(
+        ctx = langfuse.start_as_current_observation(
             as_type="generation",
             name=name,
             model=model,
             prompt=prompt,
             input=_safe_serialize(input_data),
-        ) as gen:
-            yield gen
+        )
+        gen = ctx.__enter__()
     except Exception:
         yield _NullGeneration()
+        return
+
+    try:
+        yield gen
+    finally:
+        try:
+            ctx.__exit__(None, None, None)
+        except Exception:
+            pass
 
 
 class PipelineTrace:
