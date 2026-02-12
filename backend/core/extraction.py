@@ -268,10 +268,14 @@ def convert_to_profile_format(extracted: dict) -> dict:
             }
         )
 
-    social_links = [
-        {"platform": link.get("platform", "Link"), "url": link.get("url", "")}
-        for link in extracted.get("social_links", [])
-    ]
+    social_links = []
+    for link in extracted.get("social_links", []):
+        if isinstance(link, dict):
+            social_links.append(
+                {"platform": link.get("platform", "Link"), "url": link.get("url", "")}
+            )
+        elif isinstance(link, str):
+            social_links.append({"platform": link, "url": ""})
 
     three_words = (
         personality.get("three_words_friend", [])[:2]

@@ -195,4 +195,5 @@ def build_phase_instructions(
         questions_block=questions_block,
         avoid_block=avoid_block,
         hints_block=hints_block,
+        num_questions=str(len(questions)),
     )
