@@ -108,12 +108,14 @@ def _build_fallback_phase(
     is_last_phase: bool,
     avoid_block: str,
     hints_block: str,
+    num_questions: int = 0,
 ) -> str:
     flow_exit = (
         "Exit when: You have asked your questions and delivered the farewell. Call end_interview()."
         if is_last_phase
         else "Exit when: You have asked your questions and gotten responses. Call move_to_next_phase()."
     )
+    tool_action = "call end_interview()" if is_last_phase else "call move_to_next_phase()"
     tools = _FALLBACK_PHASE_CLOSING_TOOLS if is_last_phase else _FALLBACK_PHASE_MIDDLE_TOOLS
 
     return f"""{_FALLBACK_BASE_PERSONALITY}
@@ -124,14 +126,16 @@ def _build_fallback_phase(
 
 # Conversation Flow — {phase_name}
 Goal: {phase_goal}
+Total questions in this phase: {num_questions}
 
 ## Questions to Ask (ask in order, one at a time)
 {questions_block}
 
 ## Rules
+- You have EXACTLY {num_questions} question(s) in this phase. Do NOT invent additional questions.
 - Ask ONE question at a time, then wait for the candidate's response.
-- Acknowledge what they share before asking the next question.
-- If they share something interesting, ask ONE brief follow-up, then move on.
+- Acknowledge briefly (1 sentence max), then move to the next question. Do NOT ask follow-up questions.
+- After the candidate has answered your last question, {tool_action} IMMEDIATELY. Do not keep talking.
 - {flow_exit}
 
 {tools}"""
@@ -176,6 +180,7 @@ def build_phase_instructions(
         is_last_phase=is_last_phase,
         avoid_block=avoid_block,
         hints_block=hints_block,
+        num_questions=len(questions),
     )
 
     return get_prompt(

@@ -33,6 +33,7 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
   const farewellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const participantName = basicsAnswers.name || 'User';
   const [answeredCount, setAnsweredCount] = useState(0);
+  const pendingAgentQuestionRef = useRef(false);
 
   const totalQuestions = (() => {
     if (!interviewPlan) return 0;
@@ -153,6 +154,11 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
                 timestamp: new Date().toISOString()
               }]);
 
+              const wordCount = text.trim().split(/\s+/).length;
+              if (text.includes('?') && wordCount >= 10) {
+                pendingAgentQuestionRef.current = true;
+              }
+
               if (!completingRef.current) {
                 const lower = text.toLowerCase();
                 const isFarewell = FAREWELL_PATTERNS.some(p => lower.includes(p));
@@ -178,7 +184,8 @@ export default function VoiceInterview({ basicsAnswers, resumeContext, interview
                 timestamp: new Date().toISOString()
               }]);
               const wordCount = text.trim().split(/\s+/).length;
-              if (wordCount >= 3) {
+              if (wordCount >= 3 && pendingAgentQuestionRef.current) {
+                pendingAgentQuestionRef.current = false;
                 setAnsweredCount(prev => Math.min(prev + 1, totalQuestions || 999));
               }
               setUserText('');
