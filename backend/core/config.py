@@ -52,3 +52,9 @@ GCP_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "mbio-profile-creation")
 GCP_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 STORAGE_DRIVER = os.getenv("STORAGE_DRIVER", "local")
 DATA_DIR = os.getenv("DATA_DIR", "/data")
+
+# TTS configuration — set TTS_PROVIDER=elevenlabs to use custom cloned voices
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "native").lower()
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
+ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_flash_v2_5")
+ELEVENLABS_LANGUAGE = os.getenv("ELEVENLABS_LANGUAGE", "en")

@@ -27,14 +27,17 @@ from livekit.plugins.openai import realtime as openai_realtime
 from livekit.plugins.google import realtime as google_realtime
 
 from agent.prompts import get_agent_instruction, get_extraction_prompt, build_phase_instructions
-from core.config import MODEL_PROVIDER, GCP_PROJECT, GCP_LOCATION, DATA_DIR
+from core.config import (
+    MODEL_PROVIDER, GCP_PROJECT, GCP_LOCATION, DATA_DIR,
+    TTS_PROVIDER, ELEVENLABS_VOICE_ID, ELEVENLABS_MODEL, ELEVENLABS_LANGUAGE,
+)
 from core.clients import get_openai_client
 
 load_dotenv()
 
 # Build version tag — printed at startup and in every session for easy verification
-AGENT_VERSION = "v2.1-gpt-realtime-20260211"
-print(f"[AGENT] ========== BOOT {AGENT_VERSION} | model_provider={MODEL_PROVIDER} ==========")
+AGENT_VERSION = "v2.2-elevenlabs-tts-20260219"
+print(f"[AGENT] ========== BOOT {AGENT_VERSION} | model_provider={MODEL_PROVIDER} | tts={TTS_PROVIDER} ==========")
 
 logging.getLogger("opentelemetry.exporter.otlp.proto.http._log_exporter").setLevel(
     logging.CRITICAL
@@ -78,7 +81,12 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 # Model factory
 # ---------------------------------------------------------------------------
-def get_realtime_model():
+_use_elevenlabs = TTS_PROVIDER == "elevenlabs" and ELEVENLABS_VOICE_ID
+
+
+def get_llm_model():
+    """Return the realtime LLM. When using ElevenLabs TTS the model runs in
+    text-only mode (half-cascade); otherwise it handles audio output too."""
     if MODEL_PROVIDER == "gemini":
         return google_realtime.RealtimeModel(
             model="gemini-live-2.5-flash-native-audio",
@@ -88,10 +96,31 @@ def get_realtime_model():
             project=GCP_PROJECT,
             location=GCP_LOCATION,
         )
+
+    modalities = ["text"] if _use_elevenlabs else ["audio", "text"]
     return openai_realtime.RealtimeModel(
         model="gpt-realtime",
         voice="alloy",
-        modalities=["audio", "text"],
+        modalities=modalities,
+    )
+
+
+def get_tts():
+    """Return an ElevenLabs TTS instance when configured, otherwise None
+    (the realtime model handles TTS natively)."""
+    if not _use_elevenlabs:
+        return None
+
+    from livekit.plugins import elevenlabs
+
+    print(
+        f"[AGENT] ElevenLabs TTS enabled | voice={ELEVENLABS_VOICE_ID} "
+        f"| model={ELEVENLABS_MODEL} | lang={ELEVENLABS_LANGUAGE}"
+    )
+    return elevenlabs.TTS(
+        voice_id=ELEVENLABS_VOICE_ID,
+        model=ELEVENLABS_MODEL,
+        language=ELEVENLABS_LANGUAGE,
     )
 
 
@@ -434,7 +463,8 @@ async def entrypoint(ctx: agents.JobContext):
     # Build agents
     # ------------------------------------------------------------------
     use_multi_agent = plan is not None and len(plan.get("phases", [])) > 0
-    model = get_realtime_model()
+    llm_model = get_llm_model()
+    tts_instance = get_tts()
 
     if use_multi_agent:
         # ---- MULTI-AGENT PATH ----
@@ -483,19 +513,19 @@ async def entrypoint(ctx: agents.JobContext):
             f"({', '.join(phase_names)}), starting with {phase_names[0]}"
         )
 
-        session = AgentSession[InterviewUserData](
-            llm=model,
-            userdata=userdata,
-        )
+        session_kwargs = dict(llm=llm_model, userdata=userdata)
+        if tts_instance:
+            session_kwargs["tts"] = tts_instance
+        session = AgentSession[InterviewUserData](**session_kwargs)
     else:
         # ---- FALLBACK: SINGLE AGENT ----
         print("[AGENT] Fallback mode: using single agent (no plan available)")
         first_agent = FallbackAssistant()
         userdata = InterviewUserData(candidate_name=user_name)
-        session = AgentSession[InterviewUserData](
-            llm=model,
-            userdata=userdata,
-        )
+        session_kwargs = dict(llm=llm_model, userdata=userdata)
+        if tts_instance:
+            session_kwargs["tts"] = tts_instance
+        session = AgentSession[InterviewUserData](**session_kwargs)
 
     # ------------------------------------------------------------------
     # Event handlers (shared for both paths)

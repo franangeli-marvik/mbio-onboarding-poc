@@ -155,6 +155,11 @@ services:
       - LANGFUSE_HOST=http://langfuse:3000
       - LANGFUSE_PUBLIC_KEY=pk-lf-70188066-0f9a-44b1-ab9d-d1d9214c8bbe
       - LANGFUSE_SECRET_KEY=sk-lf-1287c1cb-4787-48e2-9f69-d21671c50d82
+      - TTS_PROVIDER=${TTS_PROVIDER:-native}
+      - ELEVEN_API_KEY=${ELEVEN_API_KEY:-}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
+      - ELEVENLABS_MODEL=${ELEVENLABS_MODEL:-eleven_flash_v2_5}
+      - ELEVENLABS_LANGUAGE=${ELEVENLABS_LANGUAGE:-en}
     extra_hosts:
       - "metadata.google.internal:169.254.169.254"
     volumes:
